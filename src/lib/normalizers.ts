@@ -27,34 +27,40 @@ export function normalizeTime(rawTime: string): string {
   if (!rawTime) return '';
   let time = rawTime.trim().replace(/\s+/g, ' ');
 
-  // OCR fixes
-  time = time.replace(/^(\d{1,2})\.5\s*(AM|PM)/i, '$1:30 $2');
-  time = time.replace(/^(\d{1,2})\.0\s*(AM|PM)/i, '$1:00 $2');
-  time = time.replace(/^(\d{1,2})\.3\s*(AM|PM)/i, '$1:30 $2');
-  time = time.replace(/^S(\d{2})\s*(AM|PM)/i, '9:$1 $2');
-  time = time.replace(/^S00\s*(AM|PM)/i, '9:00 $1');
-  time = time.replace(/^I(\d{2})\s*(AM|PM)/i, '1:$1 $2');
-  time = time.replace(/^I:(\d{2})\s*(AM|PM)/i, '1:$1 $2');
-  time = time.replace(/^G:(\d{2})\s*(AM|PM)/i, '6:$1 $2');
-  time = time.replace(/^T:(\d{2})\s*(AM|PM)/i, '11:$1 $2');
-  time = time.replace(/^1n:(\d{2})\s*(AM|PM)/i, '11:$1 $2');
-  time = time.replace(/^11(\d{2})\s*(AM|PM)/i, '11:$1 $2');
+  // First pass: Replace special characters with colons (., ', ;, -, ~, |, \, /)
+  time = time.replace(/[.,';~\-\|\\\/]+/g, ':');
+  
+  // Remove all spaces
+  time = time.replace(/\s+/g, '');
+  
+  // Clean up multiple colons
+  time = time.replace(/:+/g, ':');
+  time = time.replace(/^:+|:+$/g, '');
+
+  // OCR fixes for common misread characters
+  time = time.replace(/^(\d{1,2}):(\d{2})(AM|PM)/i, '$1:$2 $3');
+  time = time.replace(/^S(\d{2})(AM|PM)/i, '9:$1 $2');
+  time = time.replace(/^S00(AM|PM)/i, '9:00 $1');
+  time = time.replace(/^I(\d{2})(AM|PM)/i, '1:$1 $2');
+  time = time.replace(/^I:(\d{2})(AM|PM)/i, '1:$1 $2');
+  time = time.replace(/^G:(\d{2})(AM|PM)/i, '6:$1 $2');
+  time = time.replace(/^T:(\d{2})(AM|PM)/i, '11:$1 $2');
+  time = time.replace(/^1n:(\d{2})(AM|PM)/i, '11:$1 $2');
+  time = time.replace(/^11(\d{2})(AM|PM)/i, '11:$1 $2');
 
   // Fix :20 -> :30 for fitness schedule context
-  time = time.replace(/^(\d{1,2}):20\s*(AM|PM)/i, (match, hour, period) => {
+  time = time.replace(/^(\d{1,2}):20(AM|PM)/i, (match, hour, period) => {
     const h = parseInt(hour);
-    if (h >= 4 && h <= 11) return `${hour}:30 ${period}`;
+    if (h >= 4 && h <= 11) return `${hour}:30${period}`;
     return match;
   });
 
   // Pad single digit minutes
-  time = time.replace(/^(\d{1,2}):(\d{1})\s*(AM|PM)/i, (_m, h, m, p) => `${h}:${m}0 ${p}`);
+  time = time.replace(/^(\d{1,2}):(\d{1})(AM|PM)/i, (_m, h, m, p) => `${h}:${m}0${p}`);
   // Add space before AM/PM
   time = time.replace(/(\d)(AM|PM)/gi, '$1 $2');
   // Fix concatenated times like "730AM"
   time = time.replace(/^(\d{1,2})(\d{2})\s*(AM|PM)/i, '$1:$2 $3');
-  // Replace periods/commas with colons
-  time = time.replace(/(\d)[.,](\d)/g, '$1:$2');
   // Missing minutes
   time = time.replace(/^(\d{1,2})\s+(AM|PM)$/gi, '$1:00 $2');
   // Extra spaces around colon

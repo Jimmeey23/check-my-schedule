@@ -10,6 +10,30 @@ export interface ScheduleClass {
   level?: ClassLevel;
 }
 
+// CSV parsed data
+export interface ClassData {
+  day: string;
+  timeRaw: string;
+  timeDate: Date | null;
+  time: string;
+  location: string;
+  className: string;
+  trainer1: string;
+  cover: string;
+  notes: string;
+  uniqueKey: string;
+}
+
+// PDF parsed data
+export interface PdfClassData {
+  day: string;
+  time: string;
+  className: string;
+  trainer: string;
+  location: string;
+  uniqueKey: string;
+}
+
 export interface NormalizedClass {
   id: string;
   day: string;
@@ -55,16 +79,24 @@ export interface WeekSchedule {
 }
 
 export interface ComparisonResult {
-  pdfClasses: ComparedClass[];
-  csvClasses: ComparedClass[];
-  summary: {
-    totalPdf: number;
-    totalCsv: number;
-    matches: number;
-    mismatches: number;
-    missingInCsv: number;
-    extraInCsv: number;
+  day: string;
+  time: string;
+  csv: ClassData | null;
+  pdf: PdfClassData | null;
+  isMatch: boolean;
+  discrepancies: {
+    classMismatch?: boolean;
+    trainerMismatch?: boolean;
+    csvMissing?: boolean;
+    pdfMissing?: boolean;
   };
+}
+
+export interface FilterState {
+  day: string[];
+  location: string[];
+  trainer: string[];
+  className: string[];
 }
 
 export interface UploadedFile {
@@ -91,3 +123,4 @@ export interface ScheduleFilters {
   level: ClassLevel | null;
   searchQuery: string;
 }
+

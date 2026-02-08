@@ -1,5 +1,5 @@
 import type { WeekSchedule, DaySchedule, ScheduleClass, ClassLevel } from '@/types/schedule';
-import { normalizeClassName } from './normalizers';
+import { normalizeTimeString, normalizeTrainerName, normalizeLocationName, normalizeClassName } from './normalizers-new';
 
 /**
  * Parse a grid-style schedule CSV where:
@@ -152,7 +152,13 @@ export function isGridStyleCSV(csvString: string): boolean {
   let timeCount = 0;
   for (let row = 3; row < Math.min(grid.length, 15); row++) {
     const cell = grid[row]?.[0]?.trim();
-    if (cell && /\d{1,2}:\d{2}/.test(cell)) timeCount++;
+    // Check for time patterns including comma-separated times like "7,15 PM"
+    // Also check if normalizeTimeString can parse it
+    if (cell) {
+      const hasTimePattern = /\d{1,2}[:.,:;]\d{2}/.test(cell) || /\d{1,2}\s*(AM|PM)/i.test(cell);
+      const normalizedTime = hasTimePattern ? normalizeTimeString(cell) : '';
+      if (normalizedTime) timeCount++;
+    }
   }
 
   return timeCount >= 3;
@@ -175,23 +181,35 @@ export function parseGridCSV(csvString: string): WeekSchedule | null {
     // Iterate through data rows (row 4+, 0-indexed: 3+)
     for (let rowIdx = 3; rowIdx < grid.length; rowIdx++) {
       const row = grid[rowIdx];
-      const time = row[0]?.trim();
+      const rawTime = row[0]?.trim();
 
-      // Skip rows without a valid time
-      if (!time || !/\d{1,2}:\d{2}/.test(time)) continue;
+      // Skip rows without a time value
+      if (!rawTime) continue;
+      
+      // Normalize time to handle special characters like commas
+      const time = normalizeTimeString(rawTime);
+      
+      // Skip if normalization failed
+      if (!time) continue;
 
       // For each day block, extract class data
       for (const block of dayBlocks) {
         const col = block.startCol;
-        const location = row[col]?.trim() || '';
-        const className = row[col + 1]?.trim() || '';
-        const trainer1 = row[col + 2]?.trim() || '';
-        const trainer2 = row[col + 3]?.trim() || '';
-        const cover = row[col + 4]?.trim() || '';
+        const rawLocation = row[col]?.trim() || '';
+        const rawClassName = row[col + 1]?.trim() || '';
+        const rawTrainer1 = row[col + 2]?.trim() || '';
+        const rawTrainer2 = row[col + 3]?.trim() || '';
+        const rawCover = row[col + 4]?.trim() || '';
 
         // Skip if no class data
-        if (!className && !trainer1) continue;
+        if (!rawClassName && !rawTrainer1) continue;
 
+        // Apply normalization
+        const location = rawLocation ? normalizeLocationName(rawLocation) : undefined;
+        const className = normalizeClassName(rawClassName);
+        const trainer1 = normalizeTrainerName(rawTrainer1);
+        const cover = rawCover ? normalizeTrainerName(rawCover) : '';
+        
         // Apply cover logic: if cover is present, use cover as the trainer
         const effectiveTrainer = cover || trainer1;
 

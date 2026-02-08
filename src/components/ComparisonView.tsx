@@ -17,10 +17,10 @@ type CompViewMode = 'side-by-side' | 'list' | 'location' | 'summary';
 type StatusFilter = 'all' | 'match' | 'mismatch' | 'missing' | 'extra';
 
 const statusConfig = {
-  match: { icon: CheckCircle2, label: 'Match', bg: 'bg-status-match/8', text: 'text-status-match', border: 'border-status-match/20', badge: 'bg-status-match/10 text-status-match' },
-  mismatch: { icon: XCircle, label: 'Mismatch', bg: 'bg-status-mismatch/8', text: 'text-status-mismatch', border: 'border-status-mismatch/20', badge: 'bg-status-mismatch/10 text-status-mismatch' },
-  missing: { icon: AlertTriangle, label: 'Missing in CSV', bg: 'bg-status-missing/8', text: 'text-status-missing', border: 'border-status-missing/20', badge: 'bg-status-missing/10 text-status-missing' },
-  extra: { icon: Plus, label: 'Extra in CSV', bg: 'bg-status-extra/8', text: 'text-status-extra', border: 'border-status-extra/20', badge: 'bg-status-extra/10 text-status-extra' },
+  match: { icon: CheckCircle2, label: 'Match', bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-200', badge: 'bg-emerald-100 text-emerald-700' },
+  mismatch: { icon: XCircle, label: 'Mismatch', bg: 'bg-red-50', text: 'text-red-600', border: 'border-red-200', badge: 'bg-red-100 text-red-700' },
+  missing: { icon: AlertTriangle, label: 'Missing in CSV', bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-200', badge: 'bg-amber-100 text-amber-700' },
+  extra: { icon: Plus, label: 'Extra in CSV', bg: 'bg-blue-50', text: 'text-blue-600', border: 'border-blue-200', badge: 'bg-blue-100 text-blue-700' },
 };
 
 function formatTime24to12(time24: string): string {
@@ -33,10 +33,10 @@ function formatTime24to12(time24: string): string {
 
 function StatCard({ label, value, color, icon: Icon }: { label: string; value: number; color: string; icon: typeof CheckCircle2 }) {
   return (
-    <div className={cn("rounded-xl border p-3 sm:p-4 text-center transition-all hover:shadow-soft", color)}>
+    <div className={cn("rounded-xl border p-3 sm:p-4 text-center transition-all hover:shadow-md", color)}>
       <Icon className="w-4 h-4 sm:w-5 sm:h-5 mx-auto mb-1 opacity-70" />
-      <p className="text-xl sm:text-2xl font-bold font-display">{value}</p>
-      <p className="text-[10px] sm:text-xs opacity-70 font-medium">{label}</p>
+      <p className="text-xl sm:text-2xl font-bold font-display text-slate-900">{value}</p>
+      <p className="text-[10px] sm:text-xs opacity-70 font-medium text-slate-600">{label}</p>
     </div>
   );
 }
@@ -95,8 +95,8 @@ function buildAlignedRows(
 function ClassCell({ cls, side, isEmpty }: { cls: ComparedClass | null; side: 'pdf' | 'csv'; isEmpty?: boolean }) {
   if (!cls || isEmpty) {
     return (
-      <div className="p-3 rounded-lg border border-dashed border-border/40 bg-muted/20 flex items-center justify-center min-h-[72px]">
-        <span className="text-xs text-muted-foreground/50 italic">—</span>
+      <div className="p-3 rounded-lg border border-dashed border-slate-300/30 bg-slate-50/30 flex items-center justify-center min-h-[72px]">
+        <span className="text-xs text-slate-400/50 italic">—</span>
       </div>
     );
   }
@@ -110,24 +110,24 @@ function ClassCell({ cls, side, isEmpty }: { cls: ComparedClass | null; side: 'p
     <div className={cn(
       "p-3 rounded-lg border transition-all min-h-[72px]",
       config.bg, config.border,
-      cls.status === 'match' && "border-status-match/30",
-      cls.status === 'mismatch' && "border-status-mismatch/30",
+      cls.status === 'match' && "border-emerald-200",
+      cls.status === 'mismatch' && "border-red-200",
     )}>
       <div className="flex items-start justify-between gap-1 mb-1">
         <div className="flex items-center gap-1.5">
           <StatusIcon className={cn("w-3.5 h-3.5 flex-shrink-0", config.text)} />
-          <span className="font-semibold text-sm text-foreground">{displayTime}</span>
+          <span className="font-semibold text-sm text-slate-900">{displayTime}</span>
         </div>
-        <Badge variant="outline" className={cn("text-[9px] h-4 px-1 flex-shrink-0", config.badge)}>{config.label}</Badge>
+        <Badge variant="outline" className={cn("text-[9px] h-4 px-1 flex-shrink-0 border-0", config.badge)}>{config.label}</Badge>
       </div>
-      <p className={cn("font-medium text-xs leading-tight", cls.differences?.className ? "text-status-mismatch font-bold" : "text-foreground")}>
+      <p className={cn("font-medium text-xs leading-tight", cls.differences?.className ? "text-red-600 font-bold" : "text-slate-900")}>
         {displayName}
       </p>
-      <p className={cn("text-[11px] mt-0.5", cls.differences?.trainer ? "text-status-mismatch font-semibold" : "text-muted-foreground")}>
+      <p className={cn("text-[11px] mt-0.5", cls.differences?.trainer ? "text-red-600 font-semibold" : "text-slate-600")}>
         {cls.normalizedTrainer || cls.trainer}
       </p>
       {cls.normalizedLocation && (
-        <p className={cn("text-[10px] mt-0.5", cls.differences?.location ? "text-status-mismatch" : "text-muted-foreground/70")}>
+        <p className={cn("text-[10px] mt-0.5", cls.differences?.location ? "text-red-600" : "text-slate-500/70")}>
           📍 {cls.normalizedLocation}
         </p>
       )}

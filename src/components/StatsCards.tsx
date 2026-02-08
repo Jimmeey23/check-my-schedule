@@ -19,25 +19,33 @@ export function StatsCards({ schedule }: StatsCardsProps) {
       label: 'Total Classes',
       value: stats?.totalClasses ?? '—',
       icon: Calendar,
-      color: 'primary' as const,
+      gradient: 'from-blue-500 to-blue-600',
+      bgGradient: 'from-blue-50 to-blue-100/50',
+      borderColor: 'border-blue-200',
     },
     {
       label: 'Active Days',
       value: stats?.totalDays ?? '—',
       icon: Clock,
-      color: 'accent' as const,
+      gradient: 'from-cyan-500 to-cyan-600',
+      bgGradient: 'from-cyan-50 to-cyan-100/50',
+      borderColor: 'border-cyan-200',
     },
     {
       label: 'Trainers',
       value: stats?.uniqueTrainers ?? '—',
       icon: Users,
-      color: 'secondary' as const,
+      gradient: 'from-emerald-500 to-emerald-600',
+      bgGradient: 'from-emerald-50 to-emerald-100/50',
+      borderColor: 'border-emerald-200',
     },
     {
       label: 'Avg/Day',
       value: stats?.avgPerDay ?? '—',
       icon: TrendingUp,
-      color: 'muted' as const,
+      gradient: 'from-orange-500 to-orange-600',
+      bgGradient: 'from-orange-50 to-orange-100/50',
+      borderColor: 'border-orange-200',
     },
   ];
 
@@ -47,24 +55,38 @@ export function StatsCards({ schedule }: StatsCardsProps) {
         <div 
           key={card.label}
           className={cn(
-            "p-5 rounded-xl border bg-card shadow-soft",
-            "animate-fade-in"
+            "group relative p-6 rounded-xl border overflow-hidden transition-all duration-300",
+            `bg-gradient-to-br ${card.bgGradient} ${card.borderColor}`,
+            "hover:shadow-lg hover:shadow-blue-200/30 hover-lift",
+            "animate-fade-in backdrop-blur-sm"
           )}
           style={{ animationDelay: `${i * 50}ms` }}
         >
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-medium text-muted-foreground">{card.label}</span>
+          {/* Animated background effect */}
+          <div className="absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity duration-300" 
+               style={{ background: `linear-gradient(135deg, var(--tw-gradient-stops))` }} />
+
+          {/* Shine effect */}
+          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+          <div className="flex items-center justify-between mb-4 relative z-10">
+            <span className="text-sm font-semibold text-slate-700 group-hover:text-slate-900 transition-colors">{card.label}</span>
             <div className={cn(
-              "w-8 h-8 rounded-lg flex items-center justify-center",
-              card.color === 'primary' && "bg-primary/10 text-primary",
-              card.color === 'accent' && "bg-accent/10 text-accent",
-              card.color === 'secondary' && "bg-secondary text-secondary-foreground",
-              card.color === 'muted' && "bg-muted text-muted-foreground"
+              "w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-300",
+              `bg-gradient-to-br ${card.gradient} text-white`,
+              "shadow-lg group-hover:shadow-xl group-hover:scale-110"
             )}>
-              <card.icon className="w-4 h-4" />
+              <card.icon className="w-5 h-5" />
             </div>
           </div>
-          <p className="text-3xl font-display font-bold">{card.value}</p>
+
+          <p className="text-3xl font-display font-bold text-slate-900 group-hover:text-slate-950 transition-colors relative z-10">
+            {card.value}
+          </p>
+
+          {/* Floating animation element */}
+          <div className="absolute top-2 right-2 w-20 h-20 rounded-full opacity-0 group-hover:opacity-5 transition-opacity duration-300"
+               style={{ background: 'radial-gradient(circle, var(--tw-gradient-stops))' }} />
         </div>
       ))}
     </div>

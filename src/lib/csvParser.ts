@@ -1,5 +1,6 @@
 import type { WeekSchedule, DaySchedule, ScheduleClass, ClassLevel } from '@/types/schedule';
-import { normalizeDay, normalizeClassName } from './normalizers';
+import { normalizeDay } from './normalizers';
+import { normalizeTimeString, normalizeTrainerName, normalizeLocationName, normalizeClassName } from './normalizers-new';
 import { isGridStyleCSV, parseGridCSV } from './gridCsvParser';
 
 interface CSVRow {
@@ -147,10 +148,18 @@ export function parseCSVToSchedule(csvString: string): WeekSchedule | null {
     
     rows.forEach((row, index) => {
       const dayRaw = row[columns.day.toLowerCase()];
-      const time = row[columns.time.toLowerCase()];
-      const className = row[columns.className.toLowerCase()];
-      const trainer = row[columns.trainer.toLowerCase()];
-      const location = columns.location ? row[columns.location.toLowerCase()] : undefined;
+      const rawTime = row[columns.time.toLowerCase()];
+      const rawClassName = row[columns.className.toLowerCase()];
+      const rawTrainer = row[columns.trainer.toLowerCase()];
+      const rawLocation = columns.location ? row[columns.location.toLowerCase()] : undefined;
+      
+      // Normalize time to handle special characters like commas
+      const time = normalizeTimeString(rawTime);
+      
+      // Normalize class name, trainer, and location
+      const className = normalizeClassName(rawClassName);
+      const trainer = normalizeTrainerName(rawTrainer);
+      const location = rawLocation ? normalizeLocationName(rawLocation) : undefined;
       
       if (!dayRaw || !time || !className || !trainer) return;
       
@@ -202,13 +211,31 @@ export function parseCSVToSchedule(csvString: string): WeekSchedule | null {
 /**
  * Read CSV file and parse to schedule
  */
-export async function readCSVFile(file: File): Promise<{ schedule: WeekSchedule | null; rawData: string }> {
+export async function readCSVFile(file: File): Promise<{ schedule: WeekSchedule | null; rawData: any[] }> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     
     reader.onload = (e) => {
-      const rawData = e.target?.result as string;
-      const schedule = parseCSVToSchedule(rawData);
+      const csvString = e.target?.result as string;
+      const schedule = parseCSVToSchedule(csvString);
+      
+      // Parse to raw array format for ClassData
+      const rawData: any[] = [];
+      if (schedule) {
+        schedule.days.forEach(day => {
+          day.classes.forEach(cls => {
+            rawData.push({
+              day: day.day,
+              time: cls.time,
+              className: cls.className, // Already normalized
+              trainer1: cls.trainer, // Already normalized
+              trainer2: '',
+              location: cls.location || '', // Already normalized
+            });
+          });
+        });
+      }
+      
       resolve({ schedule, rawData });
     };
     

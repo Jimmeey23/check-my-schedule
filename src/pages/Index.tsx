@@ -3,6 +3,8 @@ import { Header } from '@/components/Header';
 import { FileUploadZone } from '@/components/FileUploadZone';
 import { ScheduleViewer } from '@/components/ScheduleViewer';
 import { ComparisonView } from '@/components/ComparisonView';
+import { SideBySideViewer } from '@/components/SideBySideViewer';
+import { ComparisonViewer } from '@/components/ComparisonViewer';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,14 +14,16 @@ import {
   CheckCircle2, AlertCircle, Building2
 } from 'lucide-react';
 import { readCSVFile } from '@/lib/csvParser';
-import { parsePDF } from '@/lib/pdfParser';
+import { parsePDF, parsePDFToClassData } from '@/lib/pdfParser';
 import { normalizeSchedule, compareSchedules, normalizeLocation } from '@/lib/normalizers';
-import type { UploadedFile, WeekSchedule, ComparisonResult, NormalizedClass } from '@/types/schedule';
+import type { UploadedFile, WeekSchedule, ComparisonResult, NormalizedClass, ClassData, PdfClassData } from '@/types/schedule';
 
 const Index = () => {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [pdfSchedules, setPdfSchedules] = useState<Map<string, WeekSchedule>>(new Map());
   const [csvSchedule, setCsvSchedule] = useState<WeekSchedule | null>(null);
+  const [csvClassData, setCsvClassData] = useState<{[day: string]: ClassData[]} | null>(null);
+  const [pdfClassData, setPdfClassData] = useState<PdfClassData[] | null>(null);
   const [activeTab, setActiveTab] = useState('upload');
   const [selectedPdfLocation, setSelectedPdfLocation] = useState<string>('all');
   const [comparisonLocation, setComparisonLocation] = useState<string>('all');
@@ -116,7 +120,18 @@ const Index = () => {
             ...f, status: 'completed' as const, data: schedule, rawData
           } : f));
           setCsvSchedule(schedule);
-          setActiveTab('csv');
+          
+          // Populate ClassData from CSV
+          if (rawData) {
+            const classDataByDay: {[day: string]: ClassData[]} = {};
+            rawData.forEach(row => {
+              if (!classDataByDay[row.day]) classDataByDay[row.day] = [];
+              classDataByDay[row.day].push(row);
+            });
+            setCsvClassData(classDataByDay);
+          }
+          
+          setActiveTab('side-by-side');
         } else {
           throw new Error('Failed to parse CSV');
         }
@@ -124,6 +139,10 @@ const Index = () => {
         // Real PDF parsing - NO MOCK DATA
         const schedule = await parsePDF(file);
         const location = schedule.location;
+
+        // Parse PDF to ClassData format
+        const pdfData = await parsePDFToClassData(file);
+        setPdfClassData(pdfData);
 
         setUploadedFiles(prev => prev.map(f => f.id === newFile.id ? {
           ...f, status: 'completed' as const, data: schedule, location
@@ -134,7 +153,7 @@ const Index = () => {
           next.set(location, schedule);
           return next;
         });
-        setActiveTab('pdf');
+        setActiveTab('side-by-side');
       }
     } catch (error) {
       console.error('File processing error:', error);
@@ -154,8 +173,12 @@ const Index = () => {
           next.delete(file.location!);
           return next;
         });
+        setPdfClassData(null);
       }
-      if (file.type === 'csv') setCsvSchedule(null);
+      if (file.type === 'csv') {
+        setCsvSchedule(null);
+        setCsvClassData(null);
+      }
     }
     setUploadedFiles(prev => prev.filter(f => f.id !== id));
   }, [uploadedFiles]);
@@ -164,6 +187,8 @@ const Index = () => {
     setUploadedFiles([]);
     setPdfSchedules(new Map());
     setCsvSchedule(null);
+    setCsvClassData(null);
+    setPdfClassData(null);
     setActiveTab('upload');
   }, []);
 
@@ -172,86 +197,84 @@ const Index = () => {
   const canCompare = hasPdf && hasCsv;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-white">
       <Header />
 
-      <main className="container mx-auto px-4 sm:px-6 py-6 max-w-7xl">
+      <main className="container mx-auto px-4 sm:px-6 py-8 max-w-7xl">
         {/* Hero */}
-        <section className="text-center mb-8">
-          <h1 className="text-3xl md:text-4xl font-display font-bold mb-3 text-foreground">
-            <span className="gradient-text">Schedule Checker</span>
+        <section className="text-center mb-10">
+          <h1 className="text-4xl md:text-5xl font-display font-bold mb-3 bg-gradient-to-r from-blue-600 to-blue-500 bg-clip-text text-transparent">
+            Check My Schedule
           </h1>
-          <p className="text-sm text-muted-foreground max-w-xl mx-auto">
-            Upload PDF and CSV schedules to compare and verify class data across locations.
+          <p className="text-base text-slate-600 max-w-2xl mx-auto leading-relaxed">
+            Upload PDF and CSV schedules to compare and verify class data across locations with ease.
           </p>
         </section>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-5">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <TabsList className="bg-secondary/60 p-1 h-auto flex-wrap">
-              <TabsTrigger value="upload" className="gap-1.5 text-xs data-[state=active]:bg-card">
-                <Upload className="w-3.5 h-3.5" /> Upload
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <TabsList className="bg-slate-100/50 p-1.5 h-auto flex-wrap rounded-xl shadow-sm">
+              <TabsTrigger value="upload" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all">
+                <Upload className="w-4 h-4" /> Upload
               </TabsTrigger>
-              <TabsTrigger value="pdf" className="gap-1.5 text-xs data-[state=active]:bg-card" disabled={!hasPdf}>
-                <FileText className="w-3.5 h-3.5" /> PDF
-                {hasPdf && <Badge variant="secondary" className="text-[10px] h-4 px-1.5">{pdfSchedules.size}</Badge>}
+              <TabsTrigger value="pdf" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all" disabled={!hasPdf}>
+                <FileText className="w-4 h-4" /> PDF
+                {hasPdf && <Badge variant="secondary" className="text-xs h-5 px-1.5 bg-red-100 text-red-700 border-red-200">{pdfSchedules.size}</Badge>}
               </TabsTrigger>
-              <TabsTrigger value="csv" className="gap-1.5 text-xs data-[state=active]:bg-card" disabled={!hasCsv}>
-                <FileSpreadsheet className="w-3.5 h-3.5" /> CSV
-                {hasCsv && <CheckCircle2 className="w-3 h-3 text-status-match" />}
+              <TabsTrigger value="csv" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all" disabled={!hasCsv}>
+                <FileSpreadsheet className="w-4 h-4" /> CSV
+                {hasCsv && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
               </TabsTrigger>
-              <TabsTrigger value="comparison" className="gap-1.5 text-xs data-[state=active]:bg-card" disabled={!canCompare}>
-                <GitCompare className="w-3.5 h-3.5" /> Compare
-                {canCompare && comparison && (
-                  <Badge variant="outline" className={comparison.summary.mismatches > 0
-                    ? "bg-status-mismatch/10 text-status-mismatch border-status-mismatch/20 text-[10px]"
-                    : "bg-status-match/10 text-status-match border-status-match/20 text-[10px]"
-                  }>{comparison.summary.mismatches > 0 ? `${comparison.summary.mismatches}` : '✓'}</Badge>
-                )}
+              <TabsTrigger value="side-by-side" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all" disabled={!(csvClassData && pdfClassData)}>
+                <GitCompare className="w-4 h-4" /> Side-by-Side
+              </TabsTrigger>
+              <TabsTrigger value="comparison" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all" disabled={!(csvClassData && pdfClassData)}>
+                <GitCompare className="w-4 h-4" /> Comparison
               </TabsTrigger>
             </TabsList>
 
             {uploadedFiles.length > 0 && (
-              <Button variant="outline" size="sm" onClick={handleClearAll} className="gap-1.5 text-destructive hover:text-destructive text-xs">
-                <Trash2 className="w-3.5 h-3.5" /> Clear All
+              <Button variant="outline" size="sm" onClick={handleClearAll} className="gap-2 text-red-600 hover:text-red-700 border-red-200 hover:bg-red-50 shadow-sm">
+                <Trash2 className="w-4 h-4" /> Clear All
               </Button>
             )}
           </div>
 
           {/* Status Bar */}
           {(hasPdf || hasCsv) && (
-            <div className="flex flex-wrap gap-2 items-center">
-              <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs ${hasPdf ? 'bg-status-match/10 text-status-match' : 'bg-secondary text-muted-foreground'}`}>
-                {hasPdf ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+            <div className="flex flex-wrap gap-3 items-center p-4 bg-blue-50 rounded-xl border border-blue-100 shadow-sm">
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium ${hasPdf ? 'bg-white text-emerald-700 border border-emerald-200' : 'bg-white/50 text-slate-500 border border-slate-200'}`}>
+                {hasPdf ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
                 PDF: {hasPdf ? `${pdfSchedules.size} file(s)` : 'Not uploaded'}
               </div>
-              <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs ${hasCsv ? 'bg-status-match/10 text-status-match' : 'bg-secondary text-muted-foreground'}`}>
-                {hasCsv ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium ${hasCsv ? 'bg-white text-emerald-700 border border-emerald-200' : 'bg-white/50 text-slate-500 border border-slate-200'}`}>
+                {hasCsv ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
                 CSV: {hasCsv ? 'Ready' : 'Not uploaded'}
               </div>
               {canCompare && (
-                <Button variant="default" size="sm" onClick={() => setActiveTab('comparison')} className="gap-1.5 text-xs h-7">
-                  <GitCompare className="w-3.5 h-3.5" /> Compare
+                <Button size="sm" onClick={() => setActiveTab('comparison')} className="gap-2 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white shadow-md hover:shadow-lg transition-all ml-auto">
+                  <GitCompare className="w-4 h-4" /> Compare Now
                 </Button>
               )}
             </div>
           )}
 
           <TabsContent value="upload" className="animate-fade-in">
-            <div className="bg-card border rounded-xl p-5">
+            <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
               <FileUploadZone onUpload={handleUpload} uploadedFiles={uploadedFiles} onRemoveFile={handleRemoveFile} />
             </div>
           </TabsContent>
 
           <TabsContent value="pdf" className="animate-fade-in">
-            <div className="bg-card border rounded-xl p-5">
+            <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
               {hasPdf ? (
-                <div className="space-y-4">
+                <div className="space-y-6">
                   {pdfLocations.length > 1 && (
-                    <div className="flex items-center gap-2">
-                      <Building2 className="w-4 h-4 text-muted-foreground" />
+                    <div className="flex items-center gap-3 p-4 bg-blue-50 rounded-xl border border-blue-100">
+                      <Building2 className="w-5 h-5 text-blue-600" />
+                      <span className="text-sm font-medium text-slate-700">Filter by location:</span>
                       <Select value={selectedPdfLocation} onValueChange={setSelectedPdfLocation}>
-                        <SelectTrigger className="w-[200px] h-9"><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="w-[220px] h-10 border-blue-200 focus:border-blue-500"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">All Locations</SelectItem>
                           {pdfLocations.filter(l => l && l.trim() !== '').map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
@@ -267,31 +290,31 @@ const Index = () => {
                   )}
                 </div>
               ) : (
-                <div className="text-center py-12 text-muted-foreground">Upload a PDF to view the schedule</div>
+                <div className="text-center py-16 text-slate-500">Upload a PDF to view the schedule</div>
               )}
             </div>
           </TabsContent>
 
           <TabsContent value="csv" className="animate-fade-in">
-            <div className="bg-card border rounded-xl p-5">
+            <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
               {csvSchedule ? (
                 <ScheduleViewer schedule={csvSchedule} title="CSV Schedule" />
               ) : (
-                <div className="text-center py-12 text-muted-foreground">Upload a CSV to view the schedule</div>
+                <div className="text-center py-16 text-slate-500">Upload a CSV to view the schedule</div>
               )}
             </div>
           </TabsContent>
 
           <TabsContent value="comparison" className="animate-fade-in">
-            <div className="bg-card border rounded-xl p-5">
+            <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
               {comparison ? (
-                <div className="space-y-4">
+                <div className="space-y-6">
                   {(pdfLocations.length > 1 || csvLocations.length > 1) && (
-                    <div className="flex items-center gap-2 p-3 bg-secondary/30 rounded-lg">
-                      <Building2 className="w-4 h-4 text-primary" />
-                      <span className="text-sm font-medium text-foreground">Compare by location:</span>
+                    <div className="flex items-center gap-3 p-4 bg-blue-50 rounded-xl border border-blue-100">
+                      <Building2 className="w-5 h-5 text-blue-600" />
+                      <span className="text-sm font-medium text-slate-700">Compare by location:</span>
                       <Select value={comparisonLocation} onValueChange={setComparisonLocation}>
-                        <SelectTrigger className="w-[200px] h-9"><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="w-[220px] h-10 border-blue-200 focus:border-blue-500"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">All Locations</SelectItem>
                           {[...new Set([...pdfLocations, ...csvLocations])].filter(l => l && l.trim() !== '').sort().map(l =>
@@ -304,7 +327,27 @@ const Index = () => {
                   <ComparisonView comparison={comparison} />
                 </div>
               ) : (
-                <div className="text-center py-12 text-muted-foreground">Upload both PDF and CSV files to compare</div>
+                <div className="text-center py-16 text-slate-500">Upload both PDF and CSV files to compare</div>
+              )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="side-by-side" className="animate-fade-in">
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+              {csvClassData && pdfClassData ? (
+                <SideBySideViewer csvData={csvClassData} pdfData={pdfClassData} />
+              ) : (
+                <div className="text-center py-16 text-slate-500">Upload both CSV and PDF files to use the side-by-side viewer</div>
+              )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="comparison-detail" className="animate-fade-in">
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+              {csvClassData && pdfClassData ? (
+                <ComparisonViewer csvData={csvClassData} pdfData={pdfClassData} />
+              ) : (
+                <div className="text-center py-16 text-slate-500">Upload both CSV and PDF files to use the comparison viewer</div>
               )}
             </div>
           </TabsContent>

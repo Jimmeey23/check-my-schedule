@@ -1,7 +1,14 @@
 import * as pdfjsLib from 'pdfjs-dist';
-import type { WeekSchedule, DaySchedule, ScheduleClass } from '@/types/schedule';
+import type { WeekSchedule, DaySchedule, ScheduleClass, PdfClassData } from '@/types/schedule';
 import { classNameMappings, knownTeachers } from './normalizationMaps';
 import { normalizeClassName, normalizeTrainer, normalizeTime, getClassLevel } from './normalizers';
+import {
+  normalizeTrainerName,
+  normalizeClassName as normalizeClassNameNew,
+  normalizeLocationName,
+  normalizeTimeString,
+  isValidClassName,
+} from './normalizers-new';
 
 // Set up worker from CDN
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
@@ -570,4 +577,36 @@ export async function parsePDF(file: File): Promise<WeekSchedule> {
       advanced: ['Studio HIIT', 'Studio Amped Up!'],
     },
   };
+}
+
+/**
+ * Parse PDF and return PdfClassData array with normalized data
+ */
+export async function parsePDFToClassData(file: File): Promise<PdfClassData[]> {
+  const schedule = await parsePDF(file);
+  const result: PdfClassData[] = [];
+
+  for (const daySchedule of schedule.days) {
+    for (const cls of daySchedule.classes) {
+      const normalizedTrainer = normalizeTrainerName(cls.trainer);
+      const normalizedClass = normalizeClassNameNew(cls.className);
+      const normalizedLocation = normalizeLocationName(schedule.location);
+
+      // Only include valid classes
+      if (isValidClassName(normalizedClass)) {
+        const uniqueKey = `${daySchedule.day}-${normalizeTimeString(cls.time)}-${normalizedClass}-${normalizedTrainer}`;
+
+        result.push({
+          day: daySchedule.day,
+          time: normalizeTimeString(cls.time),
+          className: normalizedClass,
+          trainer: normalizedTrainer,
+          location: normalizedLocation,
+          uniqueKey: uniqueKey,
+        });
+      }
+    }
+  }
+
+  return result;
 }

@@ -86,11 +86,11 @@ export function FileUploadZone({
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         className={cn(
-          "relative rounded-xl border-2 border-dashed p-12 transition-all duration-200",
-          "bg-secondary/30 hover:bg-secondary/50",
+          "relative rounded-2xl border-2 border-dashed p-12 transition-all duration-200",
+          "bg-gradient-to-br from-blue-50 to-blue-50/50 hover:from-blue-50/80 hover:to-blue-50/30",
           isDragging 
-            ? "border-accent bg-accent/5 scale-[1.01]" 
-            : "border-border hover:border-accent/50"
+            ? "border-blue-400 bg-blue-50 scale-[1.01] shadow-lg shadow-blue-200/50" 
+            : "border-blue-200 hover:border-blue-300"
         )}
       >
         <input
@@ -105,29 +105,29 @@ export function FileUploadZone({
           <div className={cn(
             "w-16 h-16 rounded-xl flex items-center justify-center mb-5 transition-all duration-200",
             isDragging 
-              ? "bg-accent text-accent-foreground" 
-              : "bg-primary text-primary-foreground"
+              ? "bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30" 
+              : "bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-md shadow-blue-500/20"
           )}>
             <Upload className="w-7 h-7" />
           </div>
           
-          <h3 className="text-xl font-display font-semibold mb-2 text-foreground">
+          <h3 className="text-xl font-display font-semibold mb-2 text-slate-900">
             {isDragging ? "Drop your files here" : "Drag & Drop your schedule files"}
           </h3>
-          <p className="text-muted-foreground max-w-md mb-5">
+          <p className="text-slate-600 max-w-md mb-5">
             Upload PDF schedules or CSV files to compare and verify your class data.
             We'll extract and normalize all information automatically.
           </p>
           
           <div className="flex gap-3">
             {acceptedTypes.includes('pdf') && (
-              <Button variant="outline" className="pointer-events-none gap-2">
+              <Button variant="outline" className="pointer-events-none gap-2 text-slate-600 border-slate-300 hover:bg-slate-50">
                 <FileText className="w-4 h-4" />
                 PDF
               </Button>
             )}
             {acceptedTypes.includes('csv') && (
-              <Button variant="outline" className="pointer-events-none gap-2">
+              <Button variant="outline" className="pointer-events-none gap-2 text-slate-600 border-slate-300 hover:bg-slate-50">
                 <FileSpreadsheet className="w-4 h-4" />
                 CSV
               </Button>
@@ -139,7 +139,7 @@ export function FileUploadZone({
       {/* Uploaded Files */}
       {uploadedFiles.length > 0 && (
         <div className="space-y-3">
-          <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+          <h4 className="text-sm font-medium text-slate-600 flex items-center gap-2">
             <FileSpreadsheet className="w-4 h-4" />
             Uploaded Files ({uploadedFiles.length})
           </h4>
@@ -148,28 +148,28 @@ export function FileUploadZone({
               <div 
                 key={file.id}
                 className={cn(
-                  "flex items-center gap-4 p-4 rounded-lg border bg-card transition-all animate-fade-in",
-                  file.status === 'error' ? "border-destructive/30 bg-destructive/5" : "border-border"
+                  "flex items-center gap-4 p-4 rounded-xl border bg-white transition-all shadow-sm",
+                  file.status === 'error' ? "border-red-200 bg-red-50" : "border-slate-200 hover:border-blue-300 hover:shadow-md"
                 )}
               >
                 <div className={cn(
                   "w-10 h-10 rounded-lg flex items-center justify-center",
-                  file.type === 'pdf' ? "bg-red-100 text-red-600" : "bg-green-100 text-green-600"
+                  file.type === 'pdf' ? "bg-red-100 text-red-600" : "bg-emerald-100 text-emerald-600"
                 )}>
                   {getFileIcon(file.type)}
                 </div>
                 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <p className="font-medium truncate text-foreground">{file.name}</p>
+                    <p className="font-medium truncate text-slate-900">{file.name}</p>
                     <span className={cn(
                       "text-xs px-2 py-0.5 rounded-full font-medium uppercase",
-                      file.type === 'pdf' ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"
+                      file.type === 'pdf' ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"
                     )}>
                       {file.type}
                     </span>
                   </div>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-sm text-slate-500">
                     {file.status === 'uploading' && 'Uploading...'}
                     {file.status === 'processing' && 'Processing file...'}
                     {file.status === 'completed' && 'Ready for comparison'}
@@ -183,7 +183,7 @@ export function FileUploadZone({
                     variant="ghost" 
                     size="icon"
                     onClick={() => onRemoveFile(file.id)}
-                    className="text-muted-foreground hover:text-destructive h-8 w-8"
+                    className="text-slate-400 hover:text-red-600 h-8 w-8"
                   >
                     <X className="w-4 h-4" />
                   </Button>

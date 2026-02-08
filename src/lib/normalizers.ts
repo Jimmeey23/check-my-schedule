@@ -1,5 +1,24 @@
 import type { NormalizedClass, ComparedClass, ComparisonResult, DaySchedule, ClassLevel } from '@/types/schedule';
-import { classNameMappings, teacherNameMappings, locationMappings, classLevels } from './normalizationMaps';
+import { classNameMappings, teacherNameMappings, locationMappings, classLevels, knownTeachers } from './normalizationMaps';
+
+/**
+ * Levenshtein distance for fuzzy matching
+ */
+export function levenshteinDistance(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
 
 /**
  * Normalize time with comprehensive OCR error correction
@@ -79,7 +98,6 @@ export function normalizeClassName(name: string): string {
   const expMatch = cleaned.match(/^(.+?)\s*exp$/i);
   if (expMatch) {
     const base = normalizeClassName(expMatch[1]);
-    // If base is already normalized, try express version
     if (base.startsWith('Studio ') && !base.includes('Express')) {
       return base + ' Express';
     }
@@ -95,11 +113,22 @@ export function normalizeClassName(name: string): string {
     if (key.toUpperCase() === upperCleaned) return value;
   }
 
+  // Lowercase lookup (for CSV data that may be lowercased)
+  const lowerCleaned = cleaned.toLowerCase();
+  for (const [key, value] of Object.entries(classNameMappings)) {
+    if (key.toLowerCase() === lowerCleaned) return value;
+  }
+
   // Fuzzy: remove parentheses variations
   const withoutParens = cleaned.replace(/\s*\(.*?\)\s*/g, '').trim();
   if (classNameMappings[withoutParens]) return classNameMappings[withoutParens];
   for (const [key, value] of Object.entries(classNameMappings)) {
     if (key.toUpperCase() === withoutParens.toUpperCase()) return value;
+  }
+
+  // Partial match: check if cleaned string contains a known key
+  for (const [key, value] of Object.entries(classNameMappings)) {
+    if (lowerCleaned === key.toLowerCase()) return value;
   }
 
   // If already starts with "Studio ", it's probably normalized
@@ -109,7 +138,7 @@ export function normalizeClassName(name: string): string {
 }
 
 /**
- * Normalize trainer name using comprehensive mapping
+ * Normalize trainer name using comprehensive mapping with fuzzy matching
  */
 export function normalizeTrainer(name: string): string {
   if (!name) return '';
@@ -130,6 +159,27 @@ export function normalizeTrainer(name: string): string {
     if (key.toLowerCase() === firstName.toLowerCase()) return value;
   }
 
+  // Match against full known teachers list (first name match)
+  const lowerCleaned = cleaned.toLowerCase();
+  for (const teacher of knownTeachers) {
+    const lowerTeacher = teacher.toLowerCase();
+    if (lowerTeacher === lowerCleaned || lowerTeacher.startsWith(lowerCleaned + ' ')) {
+      return teacher;
+    }
+  }
+
+  // Fuzzy matching with levenshtein distance
+  let closestMatch: string | null = null;
+  let closestDistance = 3;
+  for (const teacher of knownTeachers) {
+    const distance = levenshteinDistance(lowerCleaned, teacher.toLowerCase());
+    if (distance < closestDistance && (lowerCleaned.length >= 5 || teacher.toLowerCase().includes(lowerCleaned))) {
+      closestDistance = distance;
+      closestMatch = teacher;
+    }
+  }
+  if (closestMatch) return closestMatch;
+
   // Title case
   return cleaned.split(' ')
     .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
@@ -137,15 +187,24 @@ export function normalizeTrainer(name: string): string {
 }
 
 /**
- * Normalize location name
+ * Normalize location name with partial matching
  */
 export function normalizeLocation(location: string | undefined): string | undefined {
   if (!location) return undefined;
   let cleaned = location.trim().replace(/\s+/g, ' ');
 
+  // Direct lookup
   if (locationMappings[cleaned]) return locationMappings[cleaned];
+  
+  // Case-insensitive lookup
   for (const [key, value] of Object.entries(locationMappings)) {
     if (key.toLowerCase() === cleaned.toLowerCase()) return value;
+  }
+
+  // Partial/contains match (for CSV data with partial location names)
+  const lowerCleaned = cleaned.toLowerCase();
+  for (const [key, value] of Object.entries(locationMappings)) {
+    if (lowerCleaned.includes(key.toLowerCase())) return value;
   }
 
   return cleaned;

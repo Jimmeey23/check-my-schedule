@@ -30,12 +30,12 @@ const Index = () => {
     const set = new Set<string>();
     csvSchedule.days.forEach(d => d.classes.forEach(c => {
       const loc = normalizeLocation(c.location);
-      if (loc) set.add(loc);
+      if (loc && loc.trim() !== '') set.add(loc);
     }));
     return Array.from(set).sort();
   }, [csvSchedule]);
 
-  const pdfLocations = useMemo(() => Array.from(pdfSchedules.keys()).sort(), [pdfSchedules]);
+  const pdfLocations = useMemo(() => Array.from(pdfSchedules.keys()).filter(k => k && k.trim() !== '').sort(), [pdfSchedules]);
 
   // Build comparison - location-specific if selected
   const comparison = useMemo<ComparisonResult | null>(() => {

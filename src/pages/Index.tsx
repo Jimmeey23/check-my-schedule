@@ -254,7 +254,7 @@ const Index = () => {
                         <SelectTrigger className="w-[200px] h-9"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">All Locations</SelectItem>
-                          {pdfLocations.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
+                          {pdfLocations.filter(l => l && l.trim() !== '').map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
@@ -294,7 +294,7 @@ const Index = () => {
                         <SelectTrigger className="w-[200px] h-9"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">All Locations</SelectItem>
-                          {[...new Set([...pdfLocations, ...csvLocations])].sort().map(l =>
+                          {[...new Set([...pdfLocations, ...csvLocations])].filter(l => l && l.trim() !== '').sort().map(l =>
                             <SelectItem key={l} value={l}>{l}</SelectItem>
                           )}
                         </SelectContent>

@@ -89,13 +89,19 @@ function FilterBar({ schedule, filters, setFilters }: {
 }) {
   const allClasses = useMemo(() => {
     const set = new Set<string>();
-    schedule.days.forEach(d => d.classes.forEach(c => set.add(normalizeClassName(c.className))));
+    schedule.days.forEach(d => d.classes.forEach(c => {
+      const name = normalizeClassName(c.className);
+      if (name && name.trim() !== '') set.add(name);
+    }));
     return Array.from(set).sort();
   }, [schedule]);
 
   const allTrainers = useMemo(() => {
     const set = new Set<string>();
-    schedule.days.forEach(d => d.classes.forEach(c => set.add(normalizeTrainer(c.trainer))));
+    schedule.days.forEach(d => d.classes.forEach(c => {
+      const trainer = normalizeTrainer(c.trainer);
+      if (trainer && trainer.trim() !== '') set.add(trainer);
+    }));
     return Array.from(set).sort();
   }, [schedule]);
 
@@ -103,7 +109,7 @@ function FilterBar({ schedule, filters, setFilters }: {
     const set = new Set<string>();
     schedule.days.forEach(d => d.classes.forEach(c => {
       const loc = normalizeLocation(c.location);
-      if (loc) set.add(loc);
+      if (loc && loc.trim() !== '') set.add(loc);
     }));
     return Array.from(set).sort();
   }, [schedule]);

@@ -23,7 +23,7 @@ const Index = () => {
   const [pdfSchedules, setPdfSchedules] = useState<Map<string, WeekSchedule>>(new Map());
   const [csvSchedule, setCsvSchedule] = useState<WeekSchedule | null>(null);
   const [csvClassData, setCsvClassData] = useState<{[day: string]: ClassData[]} | null>(null);
-  const [pdfClassData, setPdfClassData] = useState<PdfClassData[] | null>(null);
+  const [pdfClassDataByLocation, setPdfClassDataByLocation] = useState<Map<string, PdfClassData[]>>(new Map());
   const [activeTab, setActiveTab] = useState('upload');
   const [selectedPdfLocation, setSelectedPdfLocation] = useState<string>('all');
   const [comparisonLocation, setComparisonLocation] = useState<string>('all');
@@ -40,6 +40,16 @@ const Index = () => {
   }, [csvSchedule]);
 
   const pdfLocations = useMemo(() => Array.from(pdfSchedules.keys()).filter(k => k && k.trim() !== '').sort(), [pdfSchedules]);
+
+  // Aggregate all PDF class data from all locations
+  const aggregatedPdfClassData = useMemo<PdfClassData[] | null>(() => {
+    if (pdfClassDataByLocation.size === 0) return null;
+    const allData: PdfClassData[] = [];
+    for (const data of pdfClassDataByLocation.values()) {
+      allData.push(...data);
+    }
+    return allData;
+  }, [pdfClassDataByLocation]);
 
   // Build comparison - location-specific if selected
   const comparison = useMemo<ComparisonResult | null>(() => {
@@ -142,7 +152,14 @@ const Index = () => {
 
         // Parse PDF to ClassData format
         const pdfData = await parsePDFToClassData(file);
-        setPdfClassData(pdfData);
+        
+        // Accumulate PDF data by location
+        setPdfClassDataByLocation(prev => {
+          const next = new Map(prev);
+          const existing = next.get(location) || [];
+          next.set(location, [...existing, ...pdfData]);
+          return next;
+        });
 
         setUploadedFiles(prev => prev.map(f => f.id === newFile.id ? {
           ...f, status: 'completed' as const, data: schedule, location
@@ -173,7 +190,11 @@ const Index = () => {
           next.delete(file.location!);
           return next;
         });
-        setPdfClassData(null);
+        setPdfClassDataByLocation(prev => {
+          const next = new Map(prev);
+          next.delete(file.location!);
+          return next;
+        });
       }
       if (file.type === 'csv') {
         setCsvSchedule(null);
@@ -188,7 +209,7 @@ const Index = () => {
     setPdfSchedules(new Map());
     setCsvSchedule(null);
     setCsvClassData(null);
-    setPdfClassData(null);
+    setPdfClassDataByLocation(new Map());
     setActiveTab('upload');
   }, []);
 
@@ -197,13 +218,13 @@ const Index = () => {
   const canCompare = hasPdf && hasCsv;
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen app-shell">
       <Header />
 
       <main className="container mx-auto px-4 sm:px-6 py-8 max-w-7xl">
         {/* Hero */}
         <section className="text-center mb-10">
-          <h1 className="text-4xl md:text-5xl font-display font-bold mb-3 bg-gradient-to-r from-blue-600 to-blue-500 bg-clip-text text-transparent">
+          <h1 className="text-4xl md:text-5xl font-display font-bold mb-3 gradient-text">
             Check My Schedule
           </h1>
           <p className="text-base text-slate-600 max-w-2xl mx-auto leading-relaxed">
@@ -213,7 +234,7 @@ const Index = () => {
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <TabsList className="bg-slate-100/50 p-1.5 h-auto flex-wrap rounded-xl shadow-sm">
+            <TabsList className="surface-muted p-1.5 h-auto flex-wrap rounded-xl shadow-soft">
               <TabsTrigger value="upload" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all">
                 <Upload className="w-4 h-4" /> Upload
               </TabsTrigger>
@@ -225,16 +246,21 @@ const Index = () => {
                 <FileSpreadsheet className="w-4 h-4" /> CSV
                 {hasCsv && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
               </TabsTrigger>
-              <TabsTrigger value="side-by-side" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all" disabled={!(csvClassData && pdfClassData)}>
+              <TabsTrigger value="side-by-side" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all" disabled={!(csvClassData && aggregatedPdfClassData)}>
                 <GitCompare className="w-4 h-4" /> Side-by-Side
               </TabsTrigger>
-              <TabsTrigger value="comparison" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all" disabled={!(csvClassData && pdfClassData)}>
+              <TabsTrigger value="comparison" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all" disabled={!(csvClassData && aggregatedPdfClassData)}>
                 <GitCompare className="w-4 h-4" /> Comparison
               </TabsTrigger>
             </TabsList>
 
             {uploadedFiles.length > 0 && (
-              <Button variant="outline" size="sm" onClick={handleClearAll} className="gap-2 text-red-600 hover:text-red-700 border-red-200 hover:bg-red-50 shadow-sm">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleClearAll}
+                className="gap-2 text-red-600 hover:text-red-700 border-red-200 hover:bg-red-50"
+              >
                 <Trash2 className="w-4 h-4" /> Clear All
               </Button>
             )}
@@ -242,7 +268,7 @@ const Index = () => {
 
           {/* Status Bar */}
           {(hasPdf || hasCsv) && (
-            <div className="flex flex-wrap gap-3 items-center p-4 bg-blue-50 rounded-xl border border-blue-100 shadow-sm">
+            <div className="flex flex-wrap gap-3 items-center p-4 surface-card">
               <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium ${hasPdf ? 'bg-white text-emerald-700 border border-emerald-200' : 'bg-white/50 text-slate-500 border border-slate-200'}`}>
                 {hasPdf ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
                 PDF: {hasPdf ? `${pdfSchedules.size} file(s)` : 'Not uploaded'}
@@ -252,7 +278,7 @@ const Index = () => {
                 CSV: {hasCsv ? 'Ready' : 'Not uploaded'}
               </div>
               {canCompare && (
-                <Button size="sm" onClick={() => setActiveTab('comparison')} className="gap-2 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white shadow-md hover:shadow-lg transition-all ml-auto">
+                <Button size="sm" onClick={() => setActiveTab('comparison')} className="gap-2 ml-auto">
                   <GitCompare className="w-4 h-4" /> Compare Now
                 </Button>
               )}
@@ -260,17 +286,17 @@ const Index = () => {
           )}
 
           <TabsContent value="upload" className="animate-fade-in">
-            <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
+            <div className="surface-card gradient-border-top p-8">
               <FileUploadZone onUpload={handleUpload} uploadedFiles={uploadedFiles} onRemoveFile={handleRemoveFile} />
             </div>
           </TabsContent>
 
           <TabsContent value="pdf" className="animate-fade-in">
-            <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
+            <div className="surface-card gradient-border-top p-8">
               {hasPdf ? (
                 <div className="space-y-6">
                   {pdfLocations.length > 1 && (
-                    <div className="flex items-center gap-3 p-4 bg-blue-50 rounded-xl border border-blue-100">
+                    <div className="flex items-center gap-3 p-4 surface-muted">
                       <Building2 className="w-5 h-5 text-blue-600" />
                       <span className="text-sm font-medium text-slate-700">Filter by location:</span>
                       <Select value={selectedPdfLocation} onValueChange={setSelectedPdfLocation}>
@@ -296,7 +322,7 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="csv" className="animate-fade-in">
-            <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
+            <div className="surface-card gradient-border-top p-8">
               {csvSchedule ? (
                 <ScheduleViewer schedule={csvSchedule} title="CSV Schedule" />
               ) : (
@@ -306,11 +332,11 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="comparison" className="animate-fade-in">
-            <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
+            <div className="surface-card gradient-border-top p-8">
               {comparison ? (
                 <div className="space-y-6">
                   {(pdfLocations.length > 1 || csvLocations.length > 1) && (
-                    <div className="flex items-center gap-3 p-4 bg-blue-50 rounded-xl border border-blue-100">
+                    <div className="flex items-center gap-3 p-4 surface-muted">
                       <Building2 className="w-5 h-5 text-blue-600" />
                       <span className="text-sm font-medium text-slate-700">Compare by location:</span>
                       <Select value={comparisonLocation} onValueChange={setComparisonLocation}>
@@ -333,9 +359,9 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="side-by-side" className="animate-fade-in">
-            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
-              {csvClassData && pdfClassData ? (
-                <SideBySideViewer csvData={csvClassData} pdfData={pdfClassData} />
+            <div className="surface-card gradient-border-top p-4">
+              {csvClassData && aggregatedPdfClassData ? (
+                <SideBySideViewer csvData={csvClassData} pdfData={aggregatedPdfClassData} />
               ) : (
                 <div className="text-center py-16 text-slate-500">Upload both CSV and PDF files to use the side-by-side viewer</div>
               )}
@@ -343,9 +369,9 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="comparison-detail" className="animate-fade-in">
-            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
-              {csvClassData && pdfClassData ? (
-                <ComparisonViewer csvData={csvClassData} pdfData={pdfClassData} />
+            <div className="surface-card gradient-border-top p-4">
+              {csvClassData && aggregatedPdfClassData ? (
+                <ComparisonViewer csvData={csvClassData} pdfData={aggregatedPdfClassData} />
               ) : (
                 <div className="text-center py-16 text-slate-500">Upload both CSV and PDF files to use the comparison viewer</div>
               )}

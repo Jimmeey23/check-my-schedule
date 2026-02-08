@@ -87,10 +87,10 @@ export function FileUploadZone({
         onDrop={handleDrop}
         className={cn(
           "relative rounded-2xl border-2 border-dashed p-12 transition-all duration-200",
-          "bg-gradient-to-br from-blue-50 to-blue-50/50 hover:from-blue-50/80 hover:to-blue-50/30",
+          "bg-white/70 backdrop-blur-sm",
           isDragging 
-            ? "border-blue-400 bg-blue-50 scale-[1.01] shadow-lg shadow-blue-200/50" 
-            : "border-blue-200 hover:border-blue-300"
+            ? "border-[#0353A4] bg-white scale-[1.01] shadow-elevated"
+            : "border-slate-200 hover:border-[#0353A4]/40 shadow-soft"
         )}
       >
         <input
@@ -105,10 +105,10 @@ export function FileUploadZone({
           <div className={cn(
             "w-16 h-16 rounded-xl flex items-center justify-center mb-5 transition-all duration-200",
             isDragging 
-              ? "bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/30" 
-              : "bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-md shadow-blue-500/20"
+              ? "gradient-primary text-white shadow-elevated animate-gradient-shift" 
+              : "gradient-primary text-white shadow-card"
           )}>
-            <Upload className="w-7 h-7" />
+            <Upload className="w-7 h-7 icon-tilt" />
           </div>
           
           <h3 className="text-xl font-display font-semibold mb-2 text-slate-900">
@@ -121,13 +121,13 @@ export function FileUploadZone({
           
           <div className="flex gap-3">
             {acceptedTypes.includes('pdf') && (
-              <Button variant="outline" className="pointer-events-none gap-2 text-slate-600 border-slate-300 hover:bg-slate-50">
+              <Button variant="outline" className="pointer-events-none gap-2 text-slate-700">
                 <FileText className="w-4 h-4" />
                 PDF
               </Button>
             )}
             {acceptedTypes.includes('csv') && (
-              <Button variant="outline" className="pointer-events-none gap-2 text-slate-600 border-slate-300 hover:bg-slate-50">
+              <Button variant="outline" className="pointer-events-none gap-2 text-slate-700">
                 <FileSpreadsheet className="w-4 h-4" />
                 CSV
               </Button>

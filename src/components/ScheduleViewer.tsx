@@ -68,9 +68,9 @@ function StatsBar({ schedule, filtered }: { schedule: WeekSchedule; filtered: { 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
       {stats.map(s => (
-        <div key={s.label} className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50 border border-border/50">
-          <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-            <s.icon className="w-4 h-4 text-primary" />
+        <div key={s.label} className="flex items-center gap-3 p-3 rounded-xl surface-muted shadow-soft">
+          <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+            <s.icon className="w-4 h-4 text-primary icon-tilt" />
           </div>
           <div>
             <p className="text-xl font-bold font-display text-foreground">{s.value}</p>
@@ -125,25 +125,25 @@ function FilterBar({ schedule, filters, setFilters }: {
             placeholder="Search classes, trainers..."
             value={filters.searchQuery}
             onChange={e => setFilters({ ...filters, searchQuery: e.target.value })}
-            className="pl-9 h-9 bg-secondary/30"
+            className="pl-9 h-10"
           />
         </div>
         <Select value={filters.day || 'all'} onValueChange={v => setFilters({ ...filters, day: v === 'all' ? null : v })}>
-          <SelectTrigger className="w-[140px] h-9 bg-secondary/30"><SelectValue placeholder="Day" /></SelectTrigger>
+          <SelectTrigger className="w-[140px] h-10 bg-white/70 backdrop-blur-sm border-border/70 shadow-soft"><SelectValue placeholder="Day" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Days</SelectItem>
             {DAYS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={filters.className || 'all'} onValueChange={v => setFilters({ ...filters, className: v === 'all' ? null : v })}>
-          <SelectTrigger className="w-[180px] h-9 bg-secondary/30"><SelectValue placeholder="Class" /></SelectTrigger>
+          <SelectTrigger className="w-[180px] h-10 bg-white/70 backdrop-blur-sm border-border/70 shadow-soft"><SelectValue placeholder="Class" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Classes</SelectItem>
             {allClasses.map(c => <SelectItem key={c} value={c}>{c.replace('Studio ', '')}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={filters.trainer || 'all'} onValueChange={v => setFilters({ ...filters, trainer: v === 'all' ? null : v })}>
-          <SelectTrigger className="w-[160px] h-9 bg-secondary/30"><SelectValue placeholder="Trainer" /></SelectTrigger>
+          <SelectTrigger className="w-[160px] h-10 bg-white/70 backdrop-blur-sm border-border/70 shadow-soft"><SelectValue placeholder="Trainer" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Trainers</SelectItem>
             {allTrainers.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
@@ -151,7 +151,7 @@ function FilterBar({ schedule, filters, setFilters }: {
         </Select>
         {allLocations.length > 1 && (
           <Select value={filters.location || 'all'} onValueChange={v => setFilters({ ...filters, location: v === 'all' ? null : v })}>
-            <SelectTrigger className="w-[180px] h-9 bg-secondary/30"><SelectValue placeholder="Location" /></SelectTrigger>
+            <SelectTrigger className="w-[180px] h-10 bg-white/70 backdrop-blur-sm border-border/70 shadow-soft"><SelectValue placeholder="Location" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Locations</SelectItem>
               {allLocations.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
@@ -159,7 +159,7 @@ function FilterBar({ schedule, filters, setFilters }: {
           </Select>
         )}
         <Select value={filters.level || 'all'} onValueChange={v => setFilters({ ...filters, level: v === 'all' ? null : v as ClassLevel })}>
-          <SelectTrigger className="w-[130px] h-9 bg-secondary/30"><SelectValue placeholder="Level" /></SelectTrigger>
+          <SelectTrigger className="w-[130px] h-10 bg-white/70 backdrop-blur-sm border-border/70 shadow-soft"><SelectValue placeholder="Level" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Levels</SelectItem>
             <SelectItem value="beginner">Beginner</SelectItem>
@@ -183,7 +183,7 @@ function ClassCard({ cls, showDay, day }: { cls: ScheduleClass; showDay?: boolea
   const normalized = normalizeClassName(cls.className);
   const level = getClassLevel(normalized);
   return (
-    <div className="p-3 rounded-lg border bg-card hover:shadow-card transition-all group">
+    <div className="p-3 rounded-xl border border-border/70 bg-white/70 backdrop-blur-sm shadow-soft hover:shadow-card transition-all group">
       <div className="flex items-start justify-between gap-2 mb-1.5">
         <div className="flex items-center gap-2">
           <Clock className="w-3.5 h-3.5 text-muted-foreground" />
@@ -254,7 +254,7 @@ function GridView({ filtered }: { filtered: { day: string; cls: ScheduleClass }[
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm border-collapse">
+      <table className="table-premium text-sm">
         <thead>
           <tr className="border-b bg-secondary/50">
             <th className="p-2 text-left font-medium text-muted-foreground w-24 sticky left-0 bg-secondary/50">Time</th>
@@ -300,7 +300,7 @@ function GridView({ filtered }: { filtered: { day: string; cls: ScheduleClass }[
 function ListView({ filtered }: { filtered: { day: string; cls: ScheduleClass }[] }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+      <table className="table-premium text-sm">
         <thead>
           <tr className="border-b bg-secondary/50 text-left">
             <th className="p-3 font-medium text-muted-foreground">Day</th>
@@ -431,7 +431,7 @@ export function ScheduleViewer({ schedule, title }: ScheduleViewerProps) {
       <FilterBar schedule={schedule} filters={filters} setFilters={setFilters} />
 
       {/* View Mode Selector */}
-      <div className="flex gap-1 p-1 bg-secondary/50 rounded-lg w-fit">
+      <div className="flex gap-1 p-1 surface-muted rounded-xl w-fit shadow-soft">
         {viewModes.map(mode => (
           <button
             key={mode.id}

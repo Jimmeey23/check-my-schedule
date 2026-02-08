@@ -1,0 +1,221 @@
+/* Glassmorphism Design System - Modern Premium UI */
+
+/*
+  NOTE: This file is imported after `index.css`.
+  Keep it as the canonical source for premium surface utilities.
+*/
+
+/* Glass Effects */
+.glass {
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+}
+
+.glass-hover:hover {
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(16px);
+  border-color: rgba(0, 0, 0, 0.12);
+  transform: translateY(-2px);
+  box-shadow: 0 16px 46px rgba(15, 23, 42, 0.10);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.90);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+  border-radius: 16px;
+  padding: 24px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 46px rgba(15, 23, 42, 0.10);
+}
+
+/* Gradient Utilities */
+.gradient-primary {
+  background: linear-gradient(135deg, #0A1128 0%, #001F54 50%, #0353A4 100%);
+}
+
+.gradient-secondary {
+  background: linear-gradient(135deg, #1A1A2E 0%, #16213E 100%);
+}
+
+.gradient-border-top {
+  position: relative;
+}
+
+.gradient-border-top::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #0A1128, #001F54, #0353A4);
+  border-radius: 16px 16px 0 0;
+}
+
+/* Button Styles */
+.btn-primary-glass {
+  background: linear-gradient(135deg, #0A1128 0%, #001F54 50%, #0353A4 100%);
+  color: white;
+  font-weight: 600;
+  padding: 12px 24px;
+  border-radius: 12px;
+  border: none;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 10px 22px rgba(3, 83, 164, 0.22);
+}
+
+.btn-primary-glass:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 34px rgba(3, 83, 164, 0.28);
+}
+
+.btn-primary-glass:active {
+  transform: scale(0.98);
+}
+
+.btn-secondary-glass {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1.5px solid rgba(15, 23, 42, 0.14);
+  color: #0F172A;
+  backdrop-filter: blur(8px);
+  padding: 12px 24px;
+  border-radius: 12px;
+  font-weight: 600;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-secondary-glass:hover {
+  border-color: rgba(3, 83, 164, 0.35);
+  background: rgba(255, 255, 255, 0.8);
+}
+
+/* Premium layout helpers */
+.surface-card {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+}
+
+.surface-card.hoverable {
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+}
+
+.surface-card.hoverable:hover {
+  transform: translateY(-2px);
+  border-color: rgba(3, 83, 164, 0.18);
+  box-shadow: 0 16px 46px rgba(15, 23, 42, 0.10);
+}
+
+.surface-muted {
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.85) 0%, rgba(241, 245, 249, 0.65) 100%);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 14px;
+}
+
+.section-heading {
+  letter-spacing: -0.02em;
+}
+
+/* Premium table helpers */
+.table-premium {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.table-premium thead th {
+  background: rgba(248, 250, 252, 0.85);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.table-premium tbody tr:hover {
+  background: rgba(3, 83, 164, 0.04);
+}
+
+/* Input Fields */
+.input-glass {
+  background: rgba(255, 255, 255, 0.8);
+  border: 1.5px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  padding: 12px 16px;
+  font-size: 15px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.input-glass:focus {
+  border-color: #0353A4;
+  box-shadow: 0 0 0 4px rgba(3, 83, 164, 0.1);
+  outline: none;
+}
+
+.input-glass::placeholder {
+  color: #94A3B8;
+}
+
+/* Status Badges */
+.badge-glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(8px);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  border-left: 3px solid;
+}
+
+.badge-glass.success {
+  border-left-color: #059669;
+  color: #059669;
+}
+
+.badge-glass.warning {
+  border-left-color: #D97706;
+  color: #D97706;
+}
+
+.badge-glass.error {
+  border-left-color: #DC2626;
+  color: #DC2626;
+}
+
+/* Transitions */
+.transition-smooth {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Text Colors */
+.text-primary-glass {
+  color: #0F172A;
+}
+
+.text-secondary-glass {
+  color: #64748B;
+}
+
+.text-muted-glass {
+  color: #94A3B8;
+}
+
+/* Dividers */
+.divider-glass {
+  height: 1px;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+/* Modal Overlay */
+.overlay-glass {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  background: rgba(0, 0, 0, 0.4);
+}

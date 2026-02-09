@@ -17,11 +17,48 @@ type CompViewMode = 'side-by-side' | 'list' | 'location' | 'summary';
 type StatusFilter = 'all' | 'match' | 'mismatch' | 'missing' | 'extra';
 
 const statusConfig = {
-  match: { icon: CheckCircle2, label: 'Match', bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-200', badge: 'bg-emerald-100 text-emerald-700' },
-  mismatch: { icon: XCircle, label: 'Mismatch', bg: 'bg-red-50', text: 'text-red-600', border: 'border-red-200', badge: 'bg-red-100 text-red-700' },
-  missing: { icon: AlertTriangle, label: 'Missing in CSV', bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-200', badge: 'bg-amber-100 text-amber-700' },
-  extra: { icon: Plus, label: 'Extra in CSV', bg: 'bg-blue-50', text: 'text-blue-600', border: 'border-blue-200', badge: 'bg-blue-100 text-blue-700' },
+  match: {
+    icon: CheckCircle2,
+    label: 'Match',
+    text: 'text-slate-800',
+    iconText: 'text-[#0353A4]',
+    pillBorder: 'border-slate-200',
+  },
+  mismatch: {
+    icon: XCircle,
+    label: 'Mismatch',
+    text: 'text-slate-900',
+    iconText: 'text-[#0353A4]',
+    pillBorder: 'border-slate-200',
+  },
+  missing: {
+    icon: AlertTriangle,
+    label: 'Missing in CSV',
+    text: 'text-slate-800',
+    iconText: 'text-[#0353A4]',
+    pillBorder: 'border-slate-200',
+  },
+  extra: {
+    icon: Plus,
+    label: 'Extra in CSV',
+    text: 'text-slate-800',
+    iconText: 'text-[#0353A4]',
+    pillBorder: 'border-slate-200',
+  },
 };
+
+function StatusChip({ status }: { status: ComparedClass['status'] }) {
+  const cfg = statusConfig[status];
+  const Icon = cfg.icon;
+  return (
+    <div className="inline-flex items-center gap-1.5">
+      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-900/5 border border-slate-200">
+        <Icon className={cn("w-3.5 h-3.5", cfg.iconText)} />
+      </span>
+      <span className={cn("text-xs font-medium", cfg.text)}>{cfg.label}</span>
+    </div>
+  );
+}
 
 function formatTime24to12(time24: string): string {
   if (!time24 || !time24.includes(':')) return time24;
@@ -33,8 +70,8 @@ function formatTime24to12(time24: string): string {
 
 function StatCard({ label, value, color, icon: Icon }: { label: string; value: number; color: string; icon: typeof CheckCircle2 }) {
   return (
-    <div className={cn("rounded-xl border p-3 sm:p-4 text-center transition-all hover:shadow-md", color)}>
-      <Icon className="w-4 h-4 sm:w-5 sm:h-5 mx-auto mb-1 opacity-70" />
+    <div className={cn("surface-card hoverable p-3 sm:p-4 text-center", color)}>
+      <Icon className="w-4 h-4 sm:w-5 sm:h-5 mx-auto mb-1 opacity-80" />
       <p className="text-xl sm:text-2xl font-bold font-display text-slate-900">{value}</p>
       <p className="text-[10px] sm:text-xs opacity-70 font-medium text-slate-600">{label}</p>
     </div>
@@ -108,17 +145,25 @@ function ClassCell({ cls, side, isEmpty }: { cls: ComparedClass | null; side: 'p
 
   return (
     <div className={cn(
-      "p-3 rounded-lg border transition-all min-h-[72px]",
-      config.bg, config.border,
-      cls.status === 'match' && "border-emerald-200",
-      cls.status === 'mismatch' && "border-red-200",
+      "p-3 rounded-xl border border-border/70 bg-white/70 backdrop-blur-sm shadow-soft transition-all min-h-[72px]",
+      "hover:shadow-card",
     )}>
       <div className="flex items-start justify-between gap-1 mb-1">
         <div className="flex items-center gap-1.5">
-          <StatusIcon className={cn("w-3.5 h-3.5 flex-shrink-0", config.text)} />
+          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-900/5 border border-slate-200">
+            <StatusIcon className={cn("w-3.5 h-3.5 flex-shrink-0", config.iconText)} />
+          </span>
           <span className="font-semibold text-sm text-slate-900">{displayTime}</span>
         </div>
-        <Badge variant="outline" className={cn("text-[9px] h-4 px-1 flex-shrink-0 border-0", config.badge)}>{config.label}</Badge>
+        <Badge
+          variant="outline"
+          className={cn(
+            "text-[9px] h-5 px-2 flex-shrink-0 bg-white/70 text-slate-700",
+            config.pillBorder,
+          )}
+        >
+          {config.label}
+        </Badge>
       </div>
       <p className={cn("font-medium text-xs leading-tight", cls.differences?.className ? "text-red-600 font-bold" : "text-slate-900")}>
         {displayName}
@@ -180,35 +225,34 @@ export function ComparisonView({ comparison }: ComparisonViewProps) {
     <div className="space-y-5">
       {/* Summary Stats */}
       <div className="grid grid-cols-3 md:grid-cols-6 gap-2 sm:gap-3">
-        <StatCard label="PDF Classes" value={summary.totalPdf} color="bg-card border" icon={BarChart3} />
-        <StatCard label="CSV Classes" value={summary.totalCsv} color="bg-card border" icon={BarChart3} />
-        <StatCard label="Matches" value={summary.matches} color="bg-status-match/5 border-status-match/20 text-status-match" icon={CheckCircle2} />
-        <StatCard label="Mismatches" value={summary.mismatches} color="bg-status-mismatch/5 border-status-mismatch/20 text-status-mismatch" icon={XCircle} />
-        <StatCard label="Missing" value={summary.missingInCsv} color="bg-status-missing/5 border-status-missing/20 text-status-missing" icon={AlertTriangle} />
-        <StatCard label="Extra" value={summary.extraInCsv} color="bg-status-extra/5 border-status-extra/20 text-status-extra" icon={Plus} />
+        <StatCard label="PDF Classes" value={summary.totalPdf} color="" icon={BarChart3} />
+        <StatCard label="CSV Classes" value={summary.totalCsv} color="" icon={BarChart3} />
+        <StatCard label="Matches" value={summary.matches} color="border-l-4 border-l-emerald-500/70" icon={CheckCircle2} />
+        <StatCard label="Mismatches" value={summary.mismatches} color="border-l-4 border-l-red-500/70" icon={XCircle} />
+        <StatCard label="Missing" value={summary.missingInCsv} color="border-l-4 border-l-amber-500/70" icon={AlertTriangle} />
+        <StatCard label="Extra" value={summary.extraInCsv} color="border-l-4 border-l-blue-500/70" icon={Plus} />
       </div>
 
       {/* Match Rate Bar */}
-      <div className="bg-card border rounded-xl p-4">
+      <div className="surface-card p-4">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <ArrowLeftRight className="w-4 h-4 text-primary" />
             <span className="font-medium text-sm text-foreground">Match Rate</span>
           </div>
-          <span className={cn("text-xl font-bold font-display",
-            matchRate >= 90 ? "text-status-match" : matchRate >= 70 ? "text-status-missing" : "text-status-mismatch"
-          )}>{matchRate}%</span>
+          <span className="text-xl font-bold font-display text-slate-900">{matchRate}%</span>
         </div>
-        <div className="h-2.5 bg-secondary rounded-full overflow-hidden">
-          <div className={cn("h-full transition-all duration-700 rounded-full",
-            matchRate >= 90 ? "bg-status-match" : matchRate >= 70 ? "bg-status-missing" : "bg-status-mismatch"
-          )} style={{ width: `${matchRate}%` }} />
+        <div className="h-2.5 bg-slate-200/70 rounded-full overflow-hidden">
+          <div
+            className="h-full transition-all duration-700 rounded-full gradient-primary"
+            style={{ width: `${matchRate}%` }}
+          />
         </div>
       </div>
 
       {/* Controls */}
       <div className="flex flex-wrap gap-2 items-center">
-        <div className="flex gap-0.5 p-1 bg-secondary/60 rounded-lg">
+        <div className="flex gap-0.5 p-1 surface-muted rounded-xl shadow-soft">
           {viewModes.map(mode => (
             <button key={mode.id} onClick={() => setViewMode(mode.id)}
               className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all",
@@ -220,7 +264,7 @@ export function ComparisonView({ comparison }: ComparisonViewProps) {
           ))}
         </div>
         <Select value={statusFilter} onValueChange={v => setStatusFilter(v as StatusFilter)}>
-          <SelectTrigger className="w-[130px] h-8 text-xs bg-secondary/30"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-[130px] h-10 text-xs bg-white/70 backdrop-blur-sm border-border/70 shadow-soft"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Status</SelectItem>
             <SelectItem value="match">✅ Matches</SelectItem>
@@ -230,7 +274,7 @@ export function ComparisonView({ comparison }: ComparisonViewProps) {
           </SelectContent>
         </Select>
         <Select value={dayFilter} onValueChange={setDayFilter}>
-          <SelectTrigger className="w-[120px] h-8 text-xs bg-secondary/30"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-[120px] h-10 text-xs bg-white/70 backdrop-blur-sm border-border/70 shadow-soft"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Days</SelectItem>
             {days.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
@@ -238,7 +282,7 @@ export function ComparisonView({ comparison }: ComparisonViewProps) {
         </Select>
         {locations.length > 1 && (
           <Select value={locationFilter} onValueChange={setLocationFilter}>
-            <SelectTrigger className="w-[170px] h-8 text-xs bg-secondary/30"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-[170px] h-10 text-xs bg-white/70 backdrop-blur-sm border-border/70 shadow-soft"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Locations</SelectItem>
               {locations.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
@@ -282,14 +326,14 @@ function SideBySideView({ days, pdfClasses, csvClasses }: { days: string[]; pdfC
         const dayMatches = rows.filter(r => r.status === 'match').length;
 
         return (
-          <div key={day} className="border rounded-xl overflow-hidden shadow-soft">
+          <div key={day} className="surface-card p-0 overflow-hidden">
             {/* Day header */}
-            <div className="bg-primary text-primary-foreground px-4 py-2.5 flex items-center justify-between">
+            <div className="gradient-header-dark text-white px-4 py-2.5 flex items-center justify-between">
               <h4 className="font-display font-semibold text-sm tracking-wide">{day}</h4>
               <div className="flex items-center gap-3 text-xs opacity-90">
                 <span>PDF: {dayPdfCount}</span>
                 <span>CSV: {dayCsvCount}</span>
-                <Badge className="bg-primary-foreground/20 text-primary-foreground border-0 text-[10px]">
+                <Badge className="bg-white/10 text-white border-white/20 text-[10px]">
                   {dayMatches}/{Math.max(dayPdfCount, dayCsvCount)} match
                 </Badge>
               </div>
@@ -309,11 +353,7 @@ function SideBySideView({ days, pdfClasses, csvClasses }: { days: string[]; pdfC
             <div className="divide-y divide-border/50">
               {rows.map((row, idx) => (
                 <div key={idx} className={cn(
-                  "grid grid-cols-2 divide-x divide-border/50",
-                  row.status === 'match' && "bg-status-match/3",
-                  row.status === 'mismatch' && "bg-status-mismatch/3",
-                  row.status === 'missing' && "bg-status-missing/3",
-                  row.status === 'extra' && "bg-status-extra/3",
+                  "grid grid-cols-2 divide-x divide-border/50 bg-white/40 hover:bg-white/60 transition-colors",
                 )}>
                   <div className="p-2">
                     <ClassCell cls={row.pdfClass} side="pdf" />
@@ -347,8 +387,8 @@ function FlatListView({ pdfClasses, csvClasses }: { pdfClasses: ComparedClass[];
   }, [pdfClasses, csvClasses]);
 
   return (
-    <div className="overflow-x-auto rounded-xl border">
-      <table className="w-full text-sm">
+    <div className="surface-card p-0 overflow-hidden">
+      <table className="table-premium text-sm">
         <thead>
           <tr className="border-b bg-secondary/50 text-left text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">
             <th className="p-2.5">Status</th><th className="p-2.5">Day</th><th className="p-2.5">Time</th>
@@ -360,8 +400,18 @@ function FlatListView({ pdfClasses, csvClasses }: { pdfClasses: ComparedClass[];
             const config = statusConfig[cls.status];
             const Icon = config.icon;
             return (
-              <tr key={`${cls.source}-${cls.id}`} className={cn("border-b hover:bg-secondary/30 transition-colors", config.bg)}>
-                <td className="p-2.5"><div className="flex items-center gap-1"><Icon className={cn("w-3.5 h-3.5", config.text)} /><span className="text-xs font-medium">{config.label}</span></div></td>
+              <tr
+                key={`${cls.source}-${cls.id}`}
+                className="border-b hover:bg-secondary/20 transition-colors"
+              >
+                <td className="p-2.5">
+                  <div className="flex items-center gap-1">
+                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-900/5 border border-slate-200">
+                      <Icon className={cn("w-3.5 h-3.5", config.iconText)} />
+                    </span>
+                    <span className={cn("text-xs font-medium", config.text)}>{config.label}</span>
+                  </div>
+                </td>
                 <td className="p-2.5 text-xs">{cls.day.slice(0, 3)}</td>
                 <td className="p-2.5 font-medium text-xs">{formatTime24to12(cls.normalizedTime) || cls.time}</td>
                 <td className="p-2.5 font-medium text-xs">{cls.normalizedClassName?.replace('Studio ', '') || cls.className}</td>
@@ -390,17 +440,15 @@ function LocationCompView({ pdfClasses, csvClasses, locations }: { pdfClasses: C
         const rate = total > 0 ? Math.round((locMatches / total) * 100) : 0;
 
         return (
-          <div key={loc} className="border rounded-xl overflow-hidden shadow-soft">
-            <div className="bg-secondary px-4 py-3 flex items-center justify-between">
+          <div key={loc} className="surface-card p-0 overflow-hidden">
+            <div className="surface-muted px-4 py-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Building2 className="w-4 h-4 text-primary" />
                 <h4 className="font-display font-semibold text-sm">{loc}</h4>
               </div>
               <div className="flex items-center gap-3 text-xs">
                 <span className="text-muted-foreground">PDF: {locPdf.length} • CSV: {locCsv.length}</span>
-                <Badge className={cn(rate >= 90 ? "bg-status-match/20 text-status-match" : rate >= 70 ? "bg-status-missing/20 text-status-missing" : "bg-status-mismatch/20 text-status-mismatch", "border-0 text-[10px]")}>
-                  {rate}% match
-                </Badge>
+                <Badge variant="outline" className="text-[10px] bg-white/70">{rate}% match</Badge>
               </div>
             </div>
             <div className="grid grid-cols-2 divide-x bg-secondary/30">
@@ -410,11 +458,7 @@ function LocationCompView({ pdfClasses, csvClasses, locations }: { pdfClasses: C
             <div className="divide-y divide-border/50">
               {alignedRows.map((row, idx) => (
                 <div key={idx} className={cn(
-                  "grid grid-cols-2 divide-x divide-border/50",
-                  row.status === 'match' && "bg-status-match/3",
-                  row.status === 'mismatch' && "bg-status-mismatch/3",
-                  row.status === 'missing' && "bg-status-missing/3",
-                  row.status === 'extra' && "bg-status-extra/3",
+                  "grid grid-cols-2 divide-x divide-border/50 bg-white/40 hover:bg-white/60 transition-colors",
                 )}>
                   <div className="p-2"><ClassCell cls={row.pdfClass} side="pdf" /></div>
                   <div className="p-2"><ClassCell cls={row.csvClass} side="csv" /></div>
@@ -497,12 +541,24 @@ function SummaryView({ comparison }: { comparison: ComparisonResult }) {
         <h4 className="font-display font-semibold mb-3 text-sm">Class Type Breakdown</h4>
         <div className="grid gap-2">
           {classBreakdown.map(([name, stats]) => (
-            <div key={name} className="flex items-center gap-3 p-2.5 rounded-lg border bg-card hover:shadow-soft transition-all">
+            <div key={name} className="flex items-center gap-3 p-2.5 rounded-xl border border-border/70 bg-white/70 backdrop-blur-sm shadow-soft hover:shadow-card transition-all">
               <span className="font-medium text-xs flex-1">{name}</span>
               <div className="flex gap-1.5 text-xs">
-                {stats.matches > 0 && <Badge className="bg-status-match/10 text-status-match border-0 text-[10px]">{stats.matches} ✓</Badge>}
-                {stats.mismatches > 0 && <Badge className="bg-status-mismatch/10 text-status-mismatch border-0 text-[10px]">{stats.mismatches} ✗</Badge>}
-                {stats.missing > 0 && <Badge className="bg-status-missing/10 text-status-missing border-0 text-[10px]">{stats.missing} ?</Badge>}
+                {stats.matches > 0 && (
+                  <Badge variant="outline" className="text-[10px] bg-white/70">
+                    {stats.matches} <CheckCircle2 className="w-3 h-3 ml-1" />
+                  </Badge>
+                )}
+                {stats.mismatches > 0 && (
+                  <Badge variant="outline" className="text-[10px] bg-white/70">
+                    {stats.mismatches} <XCircle className="w-3 h-3 ml-1" />
+                  </Badge>
+                )}
+                {stats.missing > 0 && (
+                  <Badge variant="outline" className="text-[10px] bg-white/70">
+                    {stats.missing} <AlertTriangle className="w-3 h-3 ml-1" />
+                  </Badge>
+                )}
               </div>
             </div>
           ))}

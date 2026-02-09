@@ -47,6 +47,11 @@
   background: linear-gradient(135deg, #1A1A2E 0%, #16213E 100%);
 }
 
+/* Extra-dark header gradient (for table headers) */
+.gradient-header-dark {
+  background: linear-gradient(135deg, #050A1A 0%, #071432 45%, #0B2B5B 100%);
+}
+
 .gradient-border-top {
   position: relative;
 }
@@ -137,6 +142,12 @@
 .table-premium thead th {
   background: rgba(248, 250, 252, 0.85);
   border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+/* When the header row itself carries a gradient/background, don't override it per-cell */
+.table-premium.table-head-dark thead th {
+  background: transparent;
+  border-bottom-color: rgba(255, 255, 255, 0.14);
 }
 
 .table-premium tbody tr:hover {

@@ -548,9 +548,9 @@ export function SideBySideViewer({ csvData, pdfData }: SideBySideViewerProps) {
 
       {/* Table */}
       <div className="flex-1 overflow-auto surface-card p-0 overflow-hidden">
-        <table className="table-premium text-sm">
+        <table className="table-premium table-head-dark text-sm">
           <thead>
-            <tr className="gradient-primary text-white sticky top-0 z-10">
+            <tr className="gradient-header-dark text-white sticky top-0 z-10">
               <th className="px-3 py-2 text-left font-semibold">Day</th>
               <th className="px-3 py-2 text-left font-semibold">Location</th>
               <th className="px-3 py-2 text-left font-semibold">CSV Time</th>

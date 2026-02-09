@@ -152,13 +152,16 @@ export function parseCSVToSchedule(csvString: string): WeekSchedule | null {
       const rawClassName = row[columns.className.toLowerCase()];
       const rawTrainer = row[columns.trainer.toLowerCase()];
       const rawLocation = columns.location ? row[columns.location.toLowerCase()] : undefined;
+      const rawCover = row['cover']?.trim() || '';
       
       // Normalize time to handle special characters like commas
       const time = normalizeTimeString(rawTime);
       
       // Normalize class name, trainer, and location
       const className = normalizeClassName(rawClassName);
-      const trainer = normalizeTrainerName(rawTrainer);
+      // Use cover if present, otherwise use trainer
+      const trainerToUse = rawCover || rawTrainer;
+      const trainer = normalizeTrainerName(trainerToUse);
       const location = rawLocation ? normalizeLocationName(rawLocation) : undefined;
       
       if (!dayRaw || !time || !className || !trainer) return;
@@ -253,11 +256,12 @@ export async function readCSVFile(file: File): Promise<{ schedule: WeekSchedule 
         schedule.days.forEach(day => {
           day.classes.forEach((cls, idx) => {
             // Find corresponding raw row to get cover field
-            const rawRow = rawRows.find(r => 
-              r.day?.toLowerCase() === day.day.toLowerCase() && 
-              r.time === cls.time &&
-              r.class?.toLowerCase() === cls.className.toLowerCase()
-            );
+            // Match by day and time (more reliable than class name which may be normalized differently)
+            const rawRow = rawRows.find(r => {
+              const rowDay = normalizeDay(r.day || '');
+              const rowTime = normalizeTimeString(r.time || '');
+              return rowDay === day.day && rowTime === cls.time;
+            });
             
             const cover = rawRow?.cover?.trim() || '';
             const trainer1 = rawRow?.trainer1 || rawRow?.trainer || cls.trainer;

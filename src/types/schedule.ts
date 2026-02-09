@@ -105,7 +105,7 @@ export interface UploadedFile {
   type: 'pdf' | 'csv';
   uploadedAt: Date;
   data?: WeekSchedule;
-  rawData?: string;
+  rawData?: ClassData[];
   status: 'uploading' | 'processing' | 'completed' | 'error';
   error?: string;
   location?: string;
@@ -122,5 +122,20 @@ export interface ScheduleFilters {
   location: string | null;
   level: ClassLevel | null;
   searchQuery: string;
+}
+
+export interface ScheduleComparisonSummary {
+  totalPdf: number;
+  totalCsv: number;
+  matches: number;
+  mismatches: number;
+  missingInCsv: number;
+  extraInCsv: number;
+}
+
+export interface ScheduleComparisonResult {
+  pdfClasses: ComparedClass[];
+  csvClasses: ComparedClass[];
+  summary: ScheduleComparisonSummary;
 }
 

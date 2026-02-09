@@ -3,14 +3,14 @@ import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import type { ComparedClass, ComparisonResult } from '@/types/schedule';
+import type { ComparedClass, ScheduleComparisonResult } from '@/types/schedule';
 import {
   CheckCircle2, XCircle, AlertTriangle, Plus, ArrowLeftRight,
   LayoutGrid, List, Building2, BarChart3
 } from 'lucide-react';
 
 interface ComparisonViewProps {
-  comparison: ComparisonResult;
+  comparison: ScheduleComparisonResult;
 }
 
 type CompViewMode = 'side-by-side' | 'list' | 'location' | 'summary';
@@ -20,30 +20,30 @@ const statusConfig = {
   match: {
     icon: CheckCircle2,
     label: 'Match',
-    text: 'text-slate-800',
-    iconText: 'text-[#0353A4]',
-    pillBorder: 'border-slate-200',
+    text: 'text-emerald-700',
+    iconText: 'text-emerald-500',
+    pillBorder: 'border-emerald-200',
   },
   mismatch: {
     icon: XCircle,
     label: 'Mismatch',
-    text: 'text-slate-900',
-    iconText: 'text-[#0353A4]',
-    pillBorder: 'border-slate-200',
+    text: 'text-red-700',
+    iconText: 'text-red-500',
+    pillBorder: 'border-red-200',
   },
   missing: {
     icon: AlertTriangle,
     label: 'Missing in CSV',
-    text: 'text-slate-800',
-    iconText: 'text-[#0353A4]',
-    pillBorder: 'border-slate-200',
+    text: 'text-amber-700',
+    iconText: 'text-amber-500',
+    pillBorder: 'border-amber-200',
   },
   extra: {
     icon: Plus,
     label: 'Extra in CSV',
-    text: 'text-slate-800',
-    iconText: 'text-[#0353A4]',
-    pillBorder: 'border-slate-200',
+    text: 'text-blue-700',
+    iconText: 'text-blue-500',
+    pillBorder: 'border-blue-200',
   },
 };
 
@@ -477,7 +477,7 @@ function LocationCompView({ pdfClasses, csvClasses, locations }: { pdfClasses: C
 }
 
 /* ===== SUMMARY VIEW ===== */
-function SummaryView({ comparison }: { comparison: ComparisonResult }) {
+function SummaryView({ comparison }: { comparison: ScheduleComparisonResult }) {
   const dayStats = useMemo(() => {
     const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
     return days.map(day => {

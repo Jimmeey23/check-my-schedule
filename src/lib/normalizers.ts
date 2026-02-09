@@ -1,4 +1,4 @@
-import type { NormalizedClass, ComparedClass, ComparisonResult, DaySchedule, ClassLevel } from '@/types/schedule';
+import type { NormalizedClass, ComparedClass, ScheduleComparisonResult, DaySchedule, ClassLevel } from '@/types/schedule';
 import { classNameMappings, teacherNameMappings, locationMappings, classLevels, knownTeachers } from './normalizationMaps';
 
 /**
@@ -281,7 +281,7 @@ export function normalizeSchedule(days: DaySchedule[]): NormalizedClass[] {
 export function compareSchedules(
   pdfClasses: NormalizedClass[],
   csvClasses: NormalizedClass[]
-): ComparisonResult {
+): ScheduleComparisonResult {
   const pdfResults: ComparedClass[] = [];
   const csvResults: ComparedClass[] = [];
   const matchedCsvIds = new Set<string>();

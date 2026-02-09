@@ -5,18 +5,19 @@ import { ScheduleViewer } from '@/components/ScheduleViewer';
 import { ComparisonView } from '@/components/ComparisonView';
 import { SideBySideViewer } from '@/components/SideBySideViewer';
 import { ComparisonViewer } from '@/components/ComparisonViewer';
+import { MomenceTab } from '@/components/MomenceTab';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   FileSpreadsheet, FileText, GitCompare, Trash2, Upload,
-  CheckCircle2, AlertCircle, Building2
+  CheckCircle2, AlertCircle, Building2, Globe
 } from 'lucide-react';
 import { readCSVFile } from '@/lib/csvParser';
 import { parsePDF, parsePDFToClassData } from '@/lib/pdfParser';
 import { normalizeSchedule, compareSchedules, normalizeLocation } from '@/lib/normalizers';
-import type { UploadedFile, WeekSchedule, ComparisonResult, NormalizedClass, ClassData, PdfClassData } from '@/types/schedule';
+import type { UploadedFile, WeekSchedule, ScheduleComparisonResult, NormalizedClass, ClassData, PdfClassData } from '@/types/schedule';
 
 const Index = () => {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
@@ -52,7 +53,7 @@ const Index = () => {
   }, [pdfClassDataByLocation]);
 
   // Build comparison - location-specific if selected
-  const comparison = useMemo<ComparisonResult | null>(() => {
+  const comparison = useMemo<ScheduleComparisonResult | null>(() => {
     if (pdfSchedules.size === 0 || !csvSchedule) return null;
 
     let pdfClasses: NormalizedClass[] = [];
@@ -252,6 +253,9 @@ const Index = () => {
               <TabsTrigger value="comparison" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all" disabled={!(csvClassData && aggregatedPdfClassData)}>
                 <GitCompare className="w-4 h-4" /> Comparison
               </TabsTrigger>
+              <TabsTrigger value="momence" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all">
+                <Globe className="w-4 h-4" /> Momence
+              </TabsTrigger>
             </TabsList>
 
             {uploadedFiles.length > 0 && (
@@ -375,6 +379,17 @@ const Index = () => {
               ) : (
                 <div className="text-center py-16 text-slate-500">Upload both CSV and PDF files to use the comparison viewer</div>
               )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="momence" className="animate-fade-in">
+            <div className="surface-card gradient-border-top p-4">
+              <MomenceTab
+                startDate={viewPdfSchedule?.weekStart}
+                endDate={viewPdfSchedule?.weekEnd}
+                csvData={csvClassData}
+                pdfData={aggregatedPdfClassData}
+              />
             </div>
           </TabsContent>
         </Tabs>

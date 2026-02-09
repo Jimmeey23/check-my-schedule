@@ -230,3 +230,24 @@
   -webkit-backdrop-filter: blur(8px);
   background: rgba(0, 0, 0, 0.4);
 }
+
+/* Compact table rows – no text wrapping, fixed height */
+.table-compact tr {
+  height: 45px;
+  max-height: 45px;
+}
+
+.table-compact td,
+.table-compact th {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.table-compact td input {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}

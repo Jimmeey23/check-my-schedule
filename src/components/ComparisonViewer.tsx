@@ -6,6 +6,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Badge } from '@/components/ui/badge';
 import {
   CheckCircle2,
+  XCircle,
   AlertTriangle,
   Clock,
   Users,
@@ -202,7 +203,7 @@ export function ComparisonViewer({ csvData, pdfData }: ComparisonViewerProps) {
 
       {/* Comparison Table */}
       <div className="flex-1 overflow-auto border rounded-lg bg-white">
-        <table className="w-full border-collapse text-sm">
+        <table className="w-full border-collapse table-compact text-sm">
           <thead>
             <tr className="bg-slate-800 text-white sticky top-0 z-10">
               <th className="border border-slate-300 px-3 py-2 text-left font-semibold w-20">Status</th>
@@ -226,9 +227,9 @@ export function ComparisonViewer({ csvData, pdfData }: ComparisonViewerProps) {
               <tr key={idx} className={`border-b border-slate-200 transition-colors ${rowBgClass}`}>
                 <td className="border border-slate-300 px-3 py-2 text-center">
                   {result.isMatch ? (
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600 inline" />
+                    <CheckCircle2 className="w-5 h-5 text-emerald-500 inline" />
                   ) : (
-                    <AlertTriangle className="w-5 h-5 text-amber-600 inline" />
+                    <XCircle className="w-5 h-5 text-red-500 inline" />
                   )}
                 </td>
                 <td className="border border-slate-300 px-3 py-2 font-semibold text-slate-800">{result.day}</td>

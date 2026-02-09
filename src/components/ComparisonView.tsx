@@ -21,29 +21,37 @@ const statusConfig = {
     icon: CheckCircle2,
     label: 'Match',
     text: 'text-emerald-700',
-    iconText: 'text-emerald-500',
+    iconText: 'text-emerald-600',
     pillBorder: 'border-emerald-200',
+    iconBg: 'bg-emerald-50',
+    iconBorder: 'border-emerald-300',
   },
   mismatch: {
     icon: XCircle,
     label: 'Mismatch',
     text: 'text-red-700',
-    iconText: 'text-red-500',
+    iconText: 'text-red-600',
     pillBorder: 'border-red-200',
+    iconBg: 'bg-red-50',
+    iconBorder: 'border-red-300',
   },
   missing: {
     icon: AlertTriangle,
     label: 'Missing in CSV',
     text: 'text-amber-700',
-    iconText: 'text-amber-500',
+    iconText: 'text-amber-600',
     pillBorder: 'border-amber-200',
+    iconBg: 'bg-amber-50',
+    iconBorder: 'border-amber-300',
   },
   extra: {
     icon: Plus,
     label: 'Extra in CSV',
     text: 'text-blue-700',
-    iconText: 'text-blue-500',
+    iconText: 'text-blue-600',
     pillBorder: 'border-blue-200',
+    iconBg: 'bg-blue-50',
+    iconBorder: 'border-blue-300',
   },
 };
 
@@ -52,7 +60,7 @@ function StatusChip({ status }: { status: ComparedClass['status'] }) {
   const Icon = cfg.icon;
   return (
     <div className="inline-flex items-center gap-1.5">
-      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-900/5 border border-slate-200">
+      <span className={cn("inline-flex h-6 w-6 items-center justify-center rounded-full border", cfg.iconBg, cfg.iconBorder)}>
         <Icon className={cn("w-3.5 h-3.5", cfg.iconText)} />
       </span>
       <span className={cn("text-xs font-medium", cfg.text)}>{cfg.label}</span>
@@ -150,7 +158,7 @@ function ClassCell({ cls, side, isEmpty }: { cls: ComparedClass | null; side: 'p
     )}>
       <div className="flex items-start justify-between gap-1 mb-1">
         <div className="flex items-center gap-1.5">
-          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-900/5 border border-slate-200">
+          <span className={cn("inline-flex h-6 w-6 items-center justify-center rounded-full border", config.iconBg, config.iconBorder)}>
             <StatusIcon className={cn("w-3.5 h-3.5 flex-shrink-0", config.iconText)} />
           </span>
           <span className="font-semibold text-sm text-slate-900">{displayTime}</span>
@@ -406,7 +414,7 @@ function FlatListView({ pdfClasses, csvClasses }: { pdfClasses: ComparedClass[];
               >
                 <td className="p-2.5">
                   <div className="flex items-center gap-1">
-                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-900/5 border border-slate-200">
+                    <span className={cn("inline-flex h-6 w-6 items-center justify-center rounded-full border", config.iconBg, config.iconBorder)}>
                       <Icon className={cn("w-3.5 h-3.5", config.iconText)} />
                     </span>
                     <span className={cn("text-xs font-medium", config.text)}>{config.label}</span>

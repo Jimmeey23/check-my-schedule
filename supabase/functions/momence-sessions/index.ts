@@ -3,20 +3,23 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
 };
 
-let accessToken = "";
-let refreshToken = "";
+// Cache token to avoid re-authenticating on every request
+let cachedToken: string | null = null;
+let tokenExpiry: number = 0;
 
-async function authenticate(): Promise<void> {
-  const basicAuth = Deno.env.get("MOMENCE_BASIC_AUTH");
-  const username = Deno.env.get("MOMENCE_USERNAME");
-  const password = Deno.env.get("MOMENCE_PASSWORD");
-
-  if (!basicAuth || !username || !password) {
-    throw new Error("Missing Momence credentials in secrets");
+async function getAccessToken(): Promise<string> {
+  // Return cached token if still valid (5 min buffer)
+  if (cachedToken && Date.now() < tokenExpiry - 5 * 60 * 1000) {
+    return cachedToken;
   }
+
+  const CLIENT_ID = "api-13752-8AYbTllyoq5NMWWQ";
+  const CLIENT_SECRET = "1dT02Bv303wji6abpL1eGiwaWA7fYAPn";
+  const basicAuth = btoa(`${CLIENT_ID}:${CLIENT_SECRET}`);
 
   const response = await fetch("https://api.momence.com/api/v2/auth/token", {
     method: "POST",
@@ -27,8 +30,8 @@ async function authenticate(): Promise<void> {
     },
     body: new URLSearchParams({
       grant_type: "password",
-      username,
-      password,
+      username: "jimmygonda@gmail.com",
+      password: "Jimmeey@123",
     }),
   });
 
@@ -38,41 +41,14 @@ async function authenticate(): Promise<void> {
   }
 
   const data = await response.json();
-  accessToken = data.access_token;
-  refreshToken = data.refreshToken || data.refresh_token;
-}
+  cachedToken = data.access_token;
+  tokenExpiry = Date.now() + (data.expires_in || 3600) * 1000;
 
-async function refreshAccessToken(): Promise<void> {
-  const basicAuth = Deno.env.get("MOMENCE_BASIC_AUTH");
-
-  const response = await fetch("https://api.momence.com/api/v2/auth/token", {
-    method: "POST",
-    headers: {
-      accept: "application/json",
-      authorization: `Basic ${basicAuth}`,
-      "content-type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams({
-      grant_type: "refresh_token",
-      refresh_token: refreshToken,
-    }),
-  });
-
-  if (!response.ok) {
-    // If refresh fails, do full auth
-    await authenticate();
-    return;
-  }
-
-  const data = await response.json();
-  accessToken = data.access_token;
-  refreshToken = data.refreshToken || data.refresh_token;
+  return cachedToken;
 }
 
 async function fetchSessions(startDate: string, endDate: string): Promise<any> {
-  if (!accessToken) {
-    await authenticate();
-  }
+  const token = await getAccessToken();
 
   const params = new URLSearchParams({
     page: "0",
@@ -80,7 +56,6 @@ async function fetchSessions(startDate: string, endDate: string): Promise<any> {
     sortOrder: "ASC",
     sortBy: "startsAt",
     includeCancelled: "false",
-    types: "",
     startAfter: startDate,
     endBefore: endDate,
   });
@@ -91,21 +66,23 @@ async function fetchSessions(startDate: string, endDate: string): Promise<any> {
       method: "GET",
       headers: {
         accept: "application/json",
-        authorization: `Bearer ${accessToken}`,
+        authorization: `Bearer ${token}`,
       },
     }
   );
 
-  // If unauthorized, refresh token and retry
+  // If unauthorized, clear cache and retry once
   if (response.status === 401) {
-    await refreshAccessToken();
+    cachedToken = null;
+    const newToken = await getAccessToken();
+    
     response = await fetch(
       `https://api.momence.com/api/v2/host/sessions?${params.toString()}`,
       {
         method: "GET",
         headers: {
           accept: "application/json",
-          authorization: `Bearer ${accessToken}`,
+          authorization: `Bearer ${newToken}`,
         },
       }
     );
@@ -119,8 +96,34 @@ async function fetchSessions(startDate: string, endDate: string): Promise<any> {
   return await response.json();
 }
 
+function parseToISO(dateStr: string): string {
+  // Handle formats like "Jan 6", "January 6", "Jan 6, 2025"
+  const currentYear = new Date().getFullYear();
+  
+  // If already ISO format, return as-is
+  if (dateStr.includes("T") && dateStr.includes("-")) {
+    return dateStr.split("T")[0];
+  }
+  
+  let date = new Date(dateStr);
+  
+  // If no year in string, try current and next year
+  if (!dateStr.match(/\d{4}/)) {
+    date = new Date(`${dateStr}, ${currentYear}`);
+    if (isNaN(date.getTime())) {
+      date = new Date(`${dateStr}, ${currentYear + 1}`);
+    }
+  }
+  
+  if (isNaN(date.getTime())) {
+    throw new Error(`Invalid date format: ${dateStr}`);
+  }
+  
+  return date.toISOString().split("T")[0];
+}
+
 serve(async (req) => {
-  // CORS preflight
+  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -142,37 +145,20 @@ serve(async (req) => {
     }
 
     if (!startDate || !endDate) {
-      return new Response(
-        JSON.stringify({ error: "startDate and endDate are required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      // Default to next 30 days if no dates provided
+      const today = new Date();
+      const nextMonth = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
+      startDate = today.toISOString().split('T')[0];
+      endDate = nextMonth.toISOString().split('T')[0];
     }
 
-    // Format dates for Momence API (ISO 8601)
-    // Try to parse various date formats
-    const parseDate = (d: string): string => {
-      // If already ISO format, return as-is
-      if (d.includes("T")) return d;
-      // Try DD/MM/YYYY
-      const parts = d.split(/[\/\-\.]/);
-      if (parts.length === 3) {
-        const [a, b, c] = parts;
-        // If c is 4 digits, it's DD/MM/YYYY or MM/DD/YYYY
-        if (c.length === 4) {
-          return `${c}-${b.padStart(2, "0")}-${a.padStart(2, "0")}T00:00:00Z`;
-        }
-        // YYYY-MM-DD
-        if (a.length === 4) {
-          return `${a}-${b.padStart(2, "0")}-${c.padStart(2, "0")}T00:00:00Z`;
-        }
-      }
-      return d;
-    };
+    // Parse dates to ISO format
+    const isoStart = parseToISO(startDate);
+    const isoEnd = parseToISO(endDate);
 
-    const formattedStart = parseDate(startDate);
-    const formattedEnd = parseDate(endDate);
+    console.log(`Fetching sessions from ${isoStart} to ${isoEnd}`);
 
-    const data = await fetchSessions(formattedStart, formattedEnd);
+    const data = await fetchSessions(isoStart, isoEnd);
 
     return new Response(JSON.stringify(data), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -180,8 +166,13 @@ serve(async (req) => {
   } catch (error) {
     console.error("Momence edge function error:", error);
     return new Response(
-      JSON.stringify({ error: error.message || "Internal server error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ 
+        error: error instanceof Error ? error.message : "Internal server error" 
+      }),
+      { 
+        status: 500, 
+        headers: { ...corsHeaders, "Content-Type": "application/json" } 
+      }
     );
   }
 });

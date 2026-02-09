@@ -150,6 +150,27 @@
   border-bottom-color: rgba(255, 255, 255, 0.14);
 }
 
+/* Compact table with constrained row height and no text wrapping */
+.table-premium.table-compact tbody tr {
+  max-height: 45px;
+  height: 45px;
+}
+
+.table-premium.table-compact tbody td {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-height: 45px;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.table-premium.table-compact tbody td input {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .table-premium tbody tr:hover {
   background: rgba(3, 83, 164, 0.04);
 }

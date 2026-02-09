@@ -551,15 +551,15 @@ export function SideBySideViewer({ csvData, pdfData }: SideBySideViewerProps) {
         <table className="table-premium table-head-dark table-compact text-sm">
           <thead>
             <tr className="gradient-header-dark text-white sticky top-0 z-10">
-              <th className="px-3 py-2 text-left font-semibold">Day</th>
-              <th className="px-3 py-2 text-left font-semibold">Location</th>
-              <th className="px-3 py-2 text-left font-semibold">CSV Time</th>
-              <th className="px-3 py-2 text-left font-semibold">CSV Class</th>
-              <th className="px-3 py-2 text-left font-semibold">CSV Trainer</th>
-              <th className="px-3 py-2 text-center font-semibold">Status</th>
-              <th className="px-3 py-2 text-left font-semibold">PDF Time</th>
-              <th className="px-3 py-2 text-left font-semibold">PDF Class</th>
-              <th className="px-3 py-2 text-left font-semibold">PDF Trainer</th>
+              <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Day</th>
+              <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Location</th>
+              <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">CSV Time</th>
+              <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">CSV Class</th>
+              <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">CSV Trainer</th>
+              <th className="px-3 py-2 text-center font-semibold whitespace-nowrap">Status</th>
+              <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">PDF Time</th>
+              <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">PDF Class</th>
+              <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">PDF Trainer</th>
             </tr>
           </thead>
           <tbody>

@@ -217,20 +217,62 @@ export async function readCSVFile(file: File): Promise<{ schedule: WeekSchedule 
     
     reader.onload = (e) => {
       const csvString = e.target?.result as string;
+      
+      // Check if grid-style CSV
+      if (isGridStyleCSV(csvString)) {
+        const schedule = parseGridCSV(csvString);
+        const rawData: any[] = [];
+        
+        if (schedule) {
+          schedule.days.forEach(day => {
+            day.classes.forEach(cls => {
+              rawData.push({
+                day: day.day,
+                time: cls.time,
+                className: cls.className,
+                trainer1: cls.trainer, // Already uses cover field if present
+                trainer2: '',
+                cover: '', // Cover already applied to trainer1
+                location: cls.location || '',
+              });
+            });
+          });
+        }
+        
+        resolve({ schedule, rawData });
+        return;
+      }
+      
+      // Parse regular CSV
       const schedule = parseCSVToSchedule(csvString);
+      const rawRows = parseCSVString(csvString);
       
       // Parse to raw array format for ClassData
       const rawData: any[] = [];
-      if (schedule) {
+      if (schedule && rawRows.length > 0) {
         schedule.days.forEach(day => {
-          day.classes.forEach(cls => {
+          day.classes.forEach((cls, idx) => {
+            // Find corresponding raw row to get cover field
+            const rawRow = rawRows.find(r => 
+              r.day?.toLowerCase() === day.day.toLowerCase() && 
+              r.time === cls.time &&
+              r.class?.toLowerCase() === cls.className.toLowerCase()
+            );
+            
+            const cover = rawRow?.cover?.trim() || '';
+            const trainer1 = rawRow?.trainer1 || rawRow?.trainer || cls.trainer;
+            
+            // Use cover if present, otherwise use trainer1
+            const effectiveTrainer = cover || trainer1;
+            
             rawData.push({
               day: day.day,
               time: cls.time,
-              className: cls.className, // Already normalized
-              trainer1: cls.trainer, // Already normalized
-              trainer2: '',
-              location: cls.location || '', // Already normalized
+              className: cls.className,
+              trainer1: effectiveTrainer, // Use cover if available
+              trainer2: rawRow?.trainer2 || '',
+              cover: cover,
+              location: cls.location || '',
             });
           });
         });

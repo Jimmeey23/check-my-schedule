@@ -1,6 +1,5 @@
 import type { WeekSchedule, DaySchedule, ScheduleClass, ClassLevel } from '@/types/schedule';
-import { normalizeDay } from './normalizers';
-import { normalizeTimeString, normalizeTrainerName, normalizeLocationName, normalizeClassName } from './normalizers-new';
+import { normalizeTime, normalizeTrainer, normalizeLocation, normalizeClassName, normalizeDay } from './normalizers';
 import { isGridStyleCSV, parseGridCSV } from './gridCsvParser';
 
 interface CSVRow {
@@ -66,6 +65,7 @@ function detectColumns(headers: string[]): {
   className: string;
   trainer: string;
   location?: string;
+  cover?: string;
 } | null {
   const lowerHeaders = headers.map(h => h.toLowerCase().trim());
   
@@ -75,6 +75,7 @@ function detectColumns(headers: string[]): {
   const classVariations = ['class', 'classname', 'class_name', 'class name', 'workout', 'session', 'type'];
   const trainerVariations = ['trainer', 'instructor', 'teacher', 'coach', 'trainer_name', 'instructor_name'];
   const locationVariations = ['location', 'studio', 'room', 'venue', 'place'];
+  const coverVariations = ['cover', 'substitute', 'sub', 'replacement', 'cover_trainer', 'sub_trainer'];
   
   const findColumn = (variations: string[]) => {
     for (const v of variations) {
@@ -89,12 +90,13 @@ function detectColumns(headers: string[]): {
   const className = findColumn(classVariations);
   const trainer = findColumn(trainerVariations);
   const location = findColumn(locationVariations);
+  const cover = findColumn(coverVariations);
   
   if (!day || !time || !className || !trainer) {
     return null;
   }
   
-  return { day, time, className, trainer, location: location || undefined };
+  return { day, time, className, trainer, location: location || undefined, cover: cover || undefined };
 }
 
 /**
@@ -152,17 +154,17 @@ export function parseCSVToSchedule(csvString: string): WeekSchedule | null {
       const rawClassName = row[columns.className.toLowerCase()];
       const rawTrainer = row[columns.trainer.toLowerCase()];
       const rawLocation = columns.location ? row[columns.location.toLowerCase()] : undefined;
-      const rawCover = row['cover']?.trim() || '';
+      const rawCover = columns.cover ? (row[columns.cover.toLowerCase()]?.trim() || '') : '';
       
       // Normalize time to handle special characters like commas
-      const time = normalizeTimeString(rawTime);
+      const time = normalizeTime(rawTime);
       
       // Normalize class name, trainer, and location
       const className = normalizeClassName(rawClassName);
-      // Use cover if present, otherwise use trainer
-      const trainerToUse = rawCover || rawTrainer;
-      const trainer = normalizeTrainerName(trainerToUse);
-      const location = rawLocation ? normalizeLocationName(rawLocation) : undefined;
+      // Use cover if present and non-empty, otherwise use trainer
+      const trainerToUse = (rawCover && rawCover.trim() !== '') ? rawCover : rawTrainer;
+      const trainer = normalizeTrainer(trainerToUse);
+      const location = rawLocation ? normalizeLocation(rawLocation) : undefined;
       
       if (!dayRaw || !time || !className || !trainer) return;
       
@@ -253,27 +255,37 @@ export async function readCSVFile(file: File): Promise<{ schedule: WeekSchedule 
       // Parse to raw array format for ClassData
       const rawData: any[] = [];
       if (schedule && rawRows.length > 0) {
+        // Re-detect columns for raw data access
+        const rawHeaders = Object.keys(rawRows[0] || {});
+        const rawColumns = detectColumns(rawHeaders);
+        
         schedule.days.forEach(day => {
           day.classes.forEach((cls, idx) => {
             // Find corresponding raw row to get cover field
             // Match by day and time (more reliable than class name which may be normalized differently)
             const rawRow = rawRows.find(r => {
-              const rowDay = normalizeDay(r.day || '');
-              const rowTime = normalizeTimeString(r.time || '');
+              const dayField = rawColumns?.day.toLowerCase() || 'day';
+              const timeField = rawColumns?.time.toLowerCase() || 'time';
+              const rowDay = normalizeDay(r[dayField] || '');
+              const rowTime = normalizeTime(r[timeField] || '');
               return rowDay === day.day && rowTime === cls.time;
             });
             
-            const cover = rawRow?.cover?.trim() || '';
-            const trainer1 = rawRow?.trainer1 || rawRow?.trainer || cls.trainer;
+            // Use proper column names for field access
+            const coverField = rawColumns?.cover?.toLowerCase() || 'cover';
+            const trainerField = rawColumns?.trainer.toLowerCase() || 'trainer';
             
-            // Use cover if present, otherwise use trainer1
-            const effectiveTrainer = cover || trainer1;
+            const cover = rawRow?.[coverField]?.trim() || '';
+            const originalTrainer1 = rawRow?.[trainerField] || '';
+            
+            // Use cover if present and non-empty, otherwise use original trainer1
+            const effectiveTrainer = (cover && cover.trim() !== '') ? cover : originalTrainer1;
             
             rawData.push({
               day: day.day,
               time: cls.time,
               className: cls.className,
-              trainer1: effectiveTrainer, // Use cover if available
+              trainer1: effectiveTrainer, // Use cover if available, otherwise original trainer
               trainer2: rawRow?.trainer2 || '',
               cover: cover,
               location: cls.location || '',

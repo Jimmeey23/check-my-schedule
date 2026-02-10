@@ -95,13 +95,44 @@ export function normalizeTime(rawTime: string): string {
 
 /**
  * Normalize class name using comprehensive mapping
+ * Excludes theme names for better matching between Momence and CSV/PDF data
+ * Preserves bracketed content only for Strength Lab classes
  */
 export function normalizeClassName(name: string): string {
   if (!name) return '';
   let cleaned = name.trim().replace(/\s+/g, ' ');
 
-  // Handle "exp" suffix (express classes)
-  const expMatch = cleaned.match(/^(.+?)\s*exp$/i);
+  // Handle Express classes in parentheses/brackets first
+  let hasExpress = false;
+  const expressInParenMatch = cleaned.match(/\s*[\(\[]\s*(exp|express)\s*[\)\]]/i);
+  if (expressInParenMatch) {
+    hasExpress = true;
+    cleaned = cleaned.replace(/\s*[\(\[]\s*(exp|express)\s*[\)\]]\s*/gi, '').trim();
+  }
+
+  // Remove bracketed content EXCEPT for Strength Lab classes and Express indicators
+  if (!cleaned.toLowerCase().includes('strength lab')) {
+    // Remove any content in parentheses or brackets for non-Strength Lab classes
+    cleaned = cleaned.replace(/\s*[\(\[].*?[\)\]]\s*/g, '').trim();
+  }
+
+  // Add Express suffix if it was in parentheses
+  if (hasExpress) {
+    cleaned = cleaned + ' Express';
+  }
+
+  // Remove other theme patterns that might not be in brackets
+  const themePatterns = [
+    /\s*-\s*[A-Za-z]+\s+Theme\s*$/i,
+    /\s*[Tt]heme:\s*[A-Za-z\s]+$/i
+  ];
+  
+  for (const pattern of themePatterns) {
+    cleaned = cleaned.replace(pattern, '').trim();
+  }
+
+  // Handle "exp" and "Express" suffix (express classes)
+  const expMatch = cleaned.match(/^(.+?)\s*(exp|express)$/i);
   if (expMatch) {
     const base = normalizeClassName(expMatch[1]);
     if (base.startsWith('Studio ') && !base.includes('Express')) {

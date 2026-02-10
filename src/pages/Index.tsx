@@ -25,7 +25,7 @@ const Index = () => {
   const [csvSchedule, setCsvSchedule] = useState<WeekSchedule | null>(null);
   const [csvClassData, setCsvClassData] = useState<{[day: string]: ClassData[]} | null>(null);
   const [pdfClassDataByLocation, setPdfClassDataByLocation] = useState<Map<string, PdfClassData[]>>(new Map());
-  const [activeTab, setActiveTab] = useState('upload');
+  const [activeTab, setActiveTab] = useState('momence');
   const [selectedPdfLocation, setSelectedPdfLocation] = useState<string>('all');
   const [comparisonLocation, setComparisonLocation] = useState<string>('all');
 

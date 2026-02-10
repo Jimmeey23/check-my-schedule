@@ -1,17 +1,45 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import type { WeekSchedule, DaySchedule, ScheduleClass, PdfClassData } from '@/types/schedule';
 import { classNameMappings, knownTeachers } from './normalizationMaps';
-import { normalizeClassName, normalizeTrainer, normalizeTime, getClassLevel } from './normalizers';
-import {
-  normalizeTrainerName,
-  normalizeClassName as normalizeClassNameNew,
-  normalizeLocationName,
-  normalizeTimeString,
-  isValidClassName,
-} from './normalizers-new';
+import { normalizeClassName, normalizeTrainer, normalizeTime, normalizeLocation, getClassLevel } from './normalizers';
 
 // Set up worker from CDN
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+
+/**
+ * Check if a class name is valid (not a person name or invalid entry)
+ */
+function isValidClassName(className: string): boolean {
+  if (!className || className.trim() === '') return false;
+  
+  const trimmed = className.trim().toLowerCase();
+  
+  const validClassPatterns = [
+    'recovery', 'fit', 'hiit', 'barre', 'mat', 'cycle', 'sweat', 'foundations',
+    'studio', 'express', 'hosted', 'cardio', 'strength', 'amped', 'power', 'blaze'
+  ];
+  
+  // Check if contains any valid class patterns
+  for (const pattern of validClassPatterns) {
+    if (trimmed.includes(pattern)) {
+      return true;
+    }
+  }
+  
+  const invalidNames = [
+    'smita', 'parekh', 'anandita', 'taarika', 'sakshi', 'anand', 'anandi', 
+    'host', 'cover', 'replacement'
+  ];
+  
+  // Check if it's an invalid name
+  for (const invalid of invalidNames) {
+    if (trimmed.includes(invalid)) {
+      return false;
+    }
+  }
+  
+  return trimmed.length > 2; // Must be at least 3 characters
+}
 
 interface TextItem {
   str: string;
@@ -588,17 +616,17 @@ export async function parsePDFToClassData(file: File): Promise<PdfClassData[]> {
 
   for (const daySchedule of schedule.days) {
     for (const cls of daySchedule.classes) {
-      const normalizedTrainer = normalizeTrainerName(cls.trainer);
-      const normalizedClass = normalizeClassNameNew(cls.className);
-      const normalizedLocation = normalizeLocationName(schedule.location);
+      const normalizedTrainer = normalizeTrainer(cls.trainer);
+      const normalizedClass = normalizeClassName(cls.className);
+      const normalizedLocation = normalizeLocation(schedule.location);
 
       // Only include valid classes
       if (isValidClassName(normalizedClass)) {
-        const uniqueKey = `${daySchedule.day}-${normalizeTimeString(cls.time)}-${normalizedClass}-${normalizedTrainer}`;
+        const uniqueKey = `${daySchedule.day}-${normalizeTime(cls.time)}-${normalizedClass}-${normalizedTrainer}`;
 
         result.push({
           day: daySchedule.day,
-          time: normalizeTimeString(cls.time),
+          time: normalizeTime(cls.time),
           className: normalizedClass,
           trainer: normalizedTrainer,
           location: normalizedLocation,

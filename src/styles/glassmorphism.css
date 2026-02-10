@@ -175,6 +175,20 @@
   background: rgba(3, 83, 164, 0.04);
 }
 
+/* Table with better width handling for long content */
+.table-premium.table-responsive tbody td {
+  white-space: normal;
+  word-wrap: break-word;
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+  line-height: 1.4;
+}
+
+.table-premium.table-responsive tbody td.break-words {
+  word-break: break-word;
+  max-width: 200px;
+}
+
 /* Input Fields */
 .input-glass {
   background: rgba(255, 255, 255, 0.8);

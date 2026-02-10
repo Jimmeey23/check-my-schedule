@@ -1,5 +1,5 @@
 import type { WeekSchedule, DaySchedule, ScheduleClass, ClassLevel } from '@/types/schedule';
-import { normalizeTimeString, normalizeTrainerName, normalizeLocationName, normalizeClassName } from './normalizers-new';
+import { normalizeTime, normalizeTrainer, normalizeLocation, normalizeClassName, normalizeDay } from './normalizers';
 
 /**
  * Parse a grid-style schedule CSV where:
@@ -156,7 +156,7 @@ export function isGridStyleCSV(csvString: string): boolean {
     // Also check if normalizeTimeString can parse it
     if (cell) {
       const hasTimePattern = /\d{1,2}[:.,:;]\d{2}/.test(cell) || /\d{1,2}\s*(AM|PM)/i.test(cell);
-      const normalizedTime = hasTimePattern ? normalizeTimeString(cell) : '';
+      const normalizedTime = hasTimePattern ? normalizeTime(cell) : '';
       if (normalizedTime) timeCount++;
     }
   }
@@ -187,7 +187,7 @@ export function parseGridCSV(csvString: string): WeekSchedule | null {
       if (!rawTime) continue;
       
       // Normalize time to handle special characters like commas
-      const time = normalizeTimeString(rawTime);
+      const time = normalizeTime(rawTime);
       
       // Skip if normalization failed
       if (!time) continue;
@@ -205,13 +205,13 @@ export function parseGridCSV(csvString: string): WeekSchedule | null {
         if (!rawClassName && !rawTrainer1) continue;
 
         // Apply normalization
-        const location = rawLocation ? normalizeLocationName(rawLocation) : undefined;
+        const location = rawLocation ? normalizeLocation(rawLocation) : undefined;
         const className = normalizeClassName(rawClassName);
-        const trainer1 = normalizeTrainerName(rawTrainer1);
-        const cover = rawCover ? normalizeTrainerName(rawCover) : '';
+        const trainer1 = normalizeTrainer(rawTrainer1);
+        const cover = (rawCover && rawCover.trim() !== '') ? normalizeTrainer(rawCover) : '';
         
-        // Apply cover logic: if cover is present, use cover as the trainer
-        const effectiveTrainer = cover || trainer1;
+        // Apply cover logic: if cover is present and non-empty, use cover as the trainer
+        const effectiveTrainer = cover ? cover : trainer1;
 
         if (!daySchedules.has(block.day)) {
           daySchedules.set(block.day, []);

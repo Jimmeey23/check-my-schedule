@@ -41,6 +41,7 @@ export function SideBySideViewer({ csvData, pdfData }: SideBySideViewerProps) {
   const [editingCell, setEditingCell] = useState<{rowIndex: number; field: string} | null>(null);
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
   const [copied, setCopied] = useState(false);
+  const [showOnlyMismatches, setShowOnlyMismatches] = useState(false);
   
   useEffect(() => {
     if (pdfData) {
@@ -278,9 +279,23 @@ export function SideBySideViewer({ csvData, pdfData }: SideBySideViewerProps) {
   const totalMismatches = totalTrainerMismatch + totalClassMismatch + totalTimeMismatch;
 
   const filterRows = (rows: AlignedRow[]): AlignedRow[] => {
-    if (quickFilter === 'all') return rows;
-    if (quickFilter === 'matches') return rows.filter(row => row.matchStatus === 'match');
-    return rows.filter(row => row.matchStatus === quickFilter);
+    let filtered = rows;
+    
+    // Apply mismatch-only filter if enabled
+    if (showOnlyMismatches) {
+      filtered = filtered.filter(row => row.matchStatus !== 'match');
+    }
+    
+    // Apply quick filter
+    if (quickFilter !== 'all') {
+      if (quickFilter === 'matches') {
+        filtered = filtered.filter(row => row.matchStatus === 'match');
+      } else {
+        filtered = filtered.filter(row => row.matchStatus === quickFilter);
+      }
+    }
+    
+    return filtered;
   };
 
   const getStatusInfo = (status: MismatchType): { icon: React.ReactNode; label: string; color: string } => {
@@ -364,6 +379,97 @@ export function SideBySideViewer({ csvData, pdfData }: SideBySideViewerProps) {
     ]);
     
     return [headers.join(','), ...rows.map(r => r.map(cell => `"${cell}"`).join(','))].join('\n');
+  };
+
+  const copyMismatchesInTableFormat = async (): Promise<void> => {
+    // Filter to only mismatches and missing rows
+    const mismatchRows = allAlignedData.filter(row => 
+      row.matchStatus !== 'match'
+    );
+
+    // Generate HTML table with inline styles
+    const tableStyles = `
+      border-collapse: collapse;
+      width: 100%;
+      font-family: Arial, sans-serif;
+      font-size: 12px;
+    `;
+    
+    const headerStyles = `
+      background-color: #f8f9fa;
+      border: 1px solid #dee2e6;
+      padding: 8px;
+      text-align: left;
+      font-weight: bold;
+    `;
+    
+    const cellStyles = `
+      border: 1px solid #dee2e6;
+      padding: 8px;
+      text-align: left;
+    `;
+    
+    const getStatusLabel = (status: MismatchType): string => {
+      switch (status) {
+        case 'trainer-mismatch': return 'Trainer Mismatch';
+        case 'class-mismatch': return 'Class Mismatch';
+        case 'time-mismatch': return 'Time Mismatch';
+        case 'csv-only': return 'Not in PDF';
+        case 'pdf-only': return 'Not in CSV';
+        default: return status;
+      }
+    };
+    
+    let htmlTable = `<table style="${tableStyles}">\n`;
+    
+    // Add header row
+    htmlTable += `<tr>\n`;
+    htmlTable += `<td style="${headerStyles}">Day</td>`;
+    htmlTable += `<td style="${headerStyles}">CSV Time</td>`;
+    htmlTable += `<td style="${headerStyles}">CSV Class</td>`;
+    htmlTable += `<td style="${headerStyles}">CSV Trainer</td>`;
+    htmlTable += `<td style="${headerStyles}">CSV Location</td>`;
+    htmlTable += `<td style="${headerStyles}">Status</td>`;
+    htmlTable += `<td style="${headerStyles}">PDF Time</td>`;
+    htmlTable += `<td style="${headerStyles}">PDF Class</td>`;
+    htmlTable += `<td style="${headerStyles}">PDF Trainer</td>`;
+    htmlTable += `<td style="${headerStyles}">PDF Location</td>`;
+    htmlTable += `</tr>\n`;
+    
+    // Add data rows
+    mismatchRows.forEach(row => {
+      htmlTable += `<tr>\n`;
+      htmlTable += `<td style="${cellStyles}">${row.day}</td>`;
+      htmlTable += `<td style="${cellStyles}">${row.csvClass?.time || '—'}</td>`;
+      htmlTable += `<td style="${cellStyles}">${row.csvClass?.className || '—'}</td>`;
+      htmlTable += `<td style="${cellStyles}">${row.csvClass?.trainer1 || '—'}</td>`;
+      htmlTable += `<td style="${cellStyles}">${row.csvClass?.location || '—'}</td>`;
+      htmlTable += `<td style="${cellStyles}">${getStatusLabel(row.matchStatus)}</td>`;
+      htmlTable += `<td style="${cellStyles}">${row.pdfClass?.time || '—'}</td>`;
+      htmlTable += `<td style="${cellStyles}">${row.pdfClass?.className || '—'}</td>`;
+      htmlTable += `<td style="${cellStyles}">${row.pdfClass?.trainer || '—'}</td>`;
+      htmlTable += `<td style="${cellStyles}">${row.pdfClass?.location || '—'}</td>`;
+      htmlTable += `</tr>\n`;
+    });
+    
+    htmlTable += `</table>`;
+    
+    try {
+      await navigator.clipboard.writeText(htmlTable);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      toast({
+        title: "Mismatches Copied!",
+        description: `Copied ${mismatchRows.length} mismatch rows in HTML table format to clipboard`,
+      });
+    } catch (err) {
+      console.error('Failed to copy to clipboard:', err);
+      toast({
+        title: "Copy Failed",
+        description: "Could not copy to clipboard. Please try again.",
+        variant: "destructive"
+      });
+    }
   };
 
   const downloadFile = (content: string, filename: string, mimeType: string) => {
@@ -502,13 +608,23 @@ export function SideBySideViewer({ csvData, pdfData }: SideBySideViewerProps) {
       {/* Action Buttons */}
       <div className="flex gap-2 flex-wrap">
         <Button
+          variant={showOnlyMismatches ? "default" : "outline"}
+          size="sm"
+          onClick={() => setShowOnlyMismatches(!showOnlyMismatches)}
+          className="gap-2"
+        >
+          <AlertTriangle className="w-4 h-4" />
+          {showOnlyMismatches ? 'Show All' : 'Show Only Mismatches'}
+        </Button>
+        
+        <Button
           variant="outline"
           size="sm"
-          onClick={copyMismatchesToClipboard}
+          onClick={copyMismatchesInTableFormat}
           className="gap-2"
         >
           {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-          Copy Mismatches
+          Copy Mismatches Table
         </Button>
         
         <Button

@@ -2,6 +2,40 @@ import type { WeekSchedule, DaySchedule, ScheduleClass, ClassLevel } from '@/typ
 import { normalizeTime, normalizeTrainer, normalizeLocation, normalizeClassName, normalizeDay } from './normalizers';
 import { isGridStyleCSV, parseGridCSV } from './gridCsvParser';
 
+// List of excluded trainer names
+const EXCLUDED_TRAINERS = [
+  'Smita Parekh',
+  'Hosted', 
+  'Nandini',
+  'Namrata',
+  'Neeta',
+  'Megha',
+  'Mansee',
+  'Anandita',
+  'Kajal',
+  'Taarika',
+  'Pooja'
+];
+
+/**
+ * Check if a class should be excluded based on trainer and cover fields
+ */
+function shouldExcludeClass(rawTrainer: string, rawCover: string): boolean {
+  const trainer1 = rawTrainer?.trim() || '';
+  const cover = rawCover?.trim() || '';
+  
+  // Exclude if both trainer1 and cover are empty
+  if (!trainer1 && !cover) {
+    return true;
+  }
+  
+  // Check if either trainer1 or cover matches excluded names
+  const trainerToCheck = cover || trainer1;
+  return EXCLUDED_TRAINERS.some(excludedName => 
+    trainerToCheck.toLowerCase().includes(excludedName.toLowerCase())
+  );
+}
+
 interface CSVRow {
   [key: string]: string;
 }
@@ -155,6 +189,11 @@ export function parseCSVToSchedule(csvString: string): WeekSchedule | null {
       const rawTrainer = row[columns.trainer.toLowerCase()];
       const rawLocation = columns.location ? row[columns.location.toLowerCase()] : undefined;
       const rawCover = columns.cover ? (row[columns.cover.toLowerCase()]?.trim() || '') : '';
+      
+      // Check if class should be excluded
+      if (shouldExcludeClass(rawTrainer, rawCover)) {
+        return;
+      }
       
       // Normalize time to handle special characters like commas
       const time = normalizeTime(rawTime);

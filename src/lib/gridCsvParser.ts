@@ -204,6 +204,11 @@ export function parseGridCSV(csvString: string): WeekSchedule | null {
         // Skip if no class data
         if (!rawClassName && !rawTrainer1) continue;
 
+        // Check if class should be excluded
+        if (shouldExcludeClass(rawTrainer1, rawCover)) {
+          continue;
+        }
+
         // Apply normalization
         const location = rawLocation ? normalizeLocation(rawLocation) : undefined;
         const className = normalizeClassName(rawClassName);

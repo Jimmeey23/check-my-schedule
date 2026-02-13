@@ -4,10 +4,11 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Globe, RefreshCw, CheckCircle2, XCircle, AlertTriangle,
-  Loader2, Calendar, Users, MapPin, Filter, X
+  Loader2, Calendar, Users, MapPin, Filter, X, Copy, Check
 } from 'lucide-react';
 import { normalizeClassName, normalizeTrainer, normalizeLocation, normalizeTime } from '@/lib/normalizers';
 import { invokeMomenceFunction } from '@/lib/supabaseClient';
+import { toast } from '@/hooks/use-toast';
 import type { MomenceSession, MomenceClassData } from '@/types/momence';
 import type { ClassData, PdfClassData } from '@/types/schedule';
 import { cn } from '@/lib/utils';
@@ -85,6 +86,8 @@ export function MomenceTab({ startDate, endDate, csvData, pdfData }: MomenceTabP
   const [filterTime, setFilterTime] = useState<string>('all');
   const [filterClass, setFilterClass] = useState<string>('all');
   const [filterTrainer, setFilterTrainer] = useState<string>('all');
+  const [showOnlyMismatches, setShowOnlyMismatches] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const fetchSessions = useCallback(async () => {
     setLoading(true);
@@ -406,7 +409,7 @@ export function MomenceTab({ startDate, endDate, csvData, pdfData }: MomenceTabP
 
   // Filtered rows
   const filteredRows = useMemo(() => {
-    return comparisonRows.filter(row => {
+    let rows = comparisonRows.filter(row => {
       if (filterStatus !== 'all' && row.status !== filterStatus) return false;
       
       const momenceMatches = row.momence && (
@@ -427,7 +430,14 @@ export function MomenceTab({ startDate, endDate, csvData, pdfData }: MomenceTabP
       
       return momenceMatches || sourceMatches;
     });
-  }, [comparisonRows, filterStatus, filterLocation, filterDay, filterTime, filterClass, filterTrainer]);
+    
+    // Apply mismatch-only filter if enabled
+    if (showOnlyMismatches) {
+      rows = rows.filter(row => row.status !== 'match');
+    }
+    
+    return rows;
+  }, [comparisonRows, filterStatus, filterLocation, filterDay, filterTime, filterClass, filterTrainer, showOnlyMismatches]);
 
   const stats = useMemo(() => {
     const s = { total: comparisonRows.length, matches: 0, mismatches: 0, momenceOnly: 0, sourceOnly: 0 };
@@ -439,6 +449,97 @@ export function MomenceTab({ startDate, endDate, csvData, pdfData }: MomenceTabP
     });
     return s;
   }, [comparisonRows]);
+
+  const copyMismatchesInTableFormat = async (): Promise<void> => {
+    // Filter to only mismatches and missing rows
+    const mismatchRows = comparisonRows.filter(row => 
+      row.status !== 'match'
+    );
+
+    // Generate HTML table with inline styles
+    const tableStyles = `
+      border-collapse: collapse;
+      width: 100%;
+      font-family: Arial, sans-serif;
+      font-size: 12px;
+    `;
+    
+    const headerStyles = `
+      background-color: #f8f9fa;
+      border: 1px solid #dee2e6;
+      padding: 8px;
+      text-align: left;
+      font-weight: bold;
+    `;
+    
+    const cellStyles = `
+      border: 1px solid #dee2e6;
+      padding: 8px;
+      text-align: left;
+    `;
+    
+    const getStatusLabel = (status: MismatchType): string => {
+      switch (status) {
+        case 'trainer-mismatch': return 'Trainer Mismatch';
+        case 'class-mismatch': return 'Class Mismatch';
+        case 'time-mismatch': return 'Time Mismatch';
+        case 'momence-only': return 'Not in ' + compareWith.toUpperCase();
+        case 'source-only': return 'Not in Momence';
+        default: return status;
+      }
+    };
+    
+    let htmlTable = `<table style="${tableStyles}">\\n`;
+    
+    // Add header row
+    htmlTable += `<tr>\\n`;
+    htmlTable += `<td style="${headerStyles}">Day</td>`;
+    htmlTable += `<td style="${headerStyles}">Momence Time</td>`;
+    htmlTable += `<td style="${headerStyles}">Momence Class</td>`;
+    htmlTable += `<td style="${headerStyles}">Momence Trainer</td>`;
+    htmlTable += `<td style="${headerStyles}">Momence Location</td>`;
+    htmlTable += `<td style="${headerStyles}">Status</td>`;
+    htmlTable += `<td style="${headerStyles}">${compareWith.toUpperCase()} Time</td>`;
+    htmlTable += `<td style="${headerStyles}">${compareWith.toUpperCase()} Class</td>`;
+    htmlTable += `<td style="${headerStyles}">${compareWith.toUpperCase()} Trainer</td>`;
+    htmlTable += `<td style="${headerStyles}">${compareWith.toUpperCase()} Location</td>`;
+    htmlTable += `</tr>\\n`;
+    
+    // Add data rows
+    mismatchRows.forEach(row => {
+      htmlTable += `<tr>\\n`;
+      htmlTable += `<td style="${cellStyles}">${row.day}</td>`;
+      htmlTable += `<td style="${cellStyles}">${row.momence?.time || '—'}</td>`;
+      htmlTable += `<td style="${cellStyles}">${row.momence?.className || '—'}</td>`;
+      htmlTable += `<td style="${cellStyles}">${row.momence?.trainer || '—'}</td>`;
+      htmlTable += `<td style="${cellStyles}">${row.momence?.location || '—'}</td>`;
+      htmlTable += `<td style="${cellStyles}">${getStatusLabel(row.status)}</td>`;
+      htmlTable += `<td style="${cellStyles}">${row.source?.time || '—'}</td>`;
+      htmlTable += `<td style="${cellStyles}">${row.source?.className || '—'}</td>`;
+      htmlTable += `<td style="${cellStyles}">${row.source?.trainer || '—'}</td>`;
+      htmlTable += `<td style="${cellStyles}">${row.source?.location || '—'}</td>`;
+      htmlTable += `</tr>\\n`;
+    });
+    
+    htmlTable += `</table>`;
+    
+    try {
+      await navigator.clipboard.writeText(htmlTable);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      toast({
+        title: "Mismatches Copied!",
+        description: `Copied ${mismatchRows.length} mismatch rows in HTML table format to clipboard`,
+      });
+    } catch (err) {
+      console.error('Failed to copy to clipboard:', err);
+      toast({
+        title: "Copy Failed",
+        description: "Could not copy to clipboard. Please try again.",
+        variant: "destructive"
+      });
+    }
+  };
 
   const dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -548,6 +649,29 @@ export function MomenceTab({ startDate, endDate, csvData, pdfData }: MomenceTabP
             <div className="flex gap-1 p-1 surface-muted rounded-xl shadow-soft">
               <button onClick={() => setGroupByDay(true)} className={cn("px-3 py-1.5 rounded-md text-xs font-medium transition-all", groupByDay ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>Group by Day</button>
               <button onClick={() => setGroupByDay(false)} className={cn("px-3 py-1.5 rounded-md text-xs font-medium transition-all", !groupByDay ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>Flat List</button>
+            </div>
+            
+            {/* Mismatch and Copy Actions */}
+            <div className="flex gap-2">
+              <Button
+                variant={showOnlyMismatches ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowOnlyMismatches(!showOnlyMismatches)}
+                className="gap-2"
+              >
+                <AlertTriangle className="w-4 h-4" />
+                {showOnlyMismatches ? 'Show All' : 'Show Only Mismatches'}
+              </Button>
+              
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={copyMismatchesInTableFormat}
+                className="gap-2"
+              >
+                {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                Copy Mismatches Table
+              </Button>
             </div>
           </div>
           

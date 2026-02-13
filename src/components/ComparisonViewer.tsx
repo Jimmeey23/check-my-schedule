@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
+import { toast } from '@/hooks/use-toast';
 import {
   CheckCircle2,
   XCircle,
@@ -14,6 +15,8 @@ import {
   FileSpreadsheet,
   FileText,
   ChevronDown,
+  Copy,
+  Check,
 } from 'lucide-react';
 
 interface ComparisonViewerProps {
@@ -27,6 +30,8 @@ export function ComparisonViewer({ csvData, pdfData }: ComparisonViewerProps) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [selectedDetail, setSelectedDetail] = useState<ComparisonResult | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [showOnlyMismatches, setShowOnlyMismatches] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const compareData = useMemo(() => {
     if (!csvData || !pdfData) return [];
@@ -141,10 +146,24 @@ export function ComparisonViewer({ csvData, pdfData }: ComparisonViewerProps) {
   }, [csvData, pdfData]);
 
   const filteredResults = useMemo(() => {
-    if (statusFilter === 'all') return compareData;
-    if (statusFilter === 'match') return compareData.filter(r => r.isMatch);
-    return compareData.filter(r => !r.isMatch);
-  }, [compareData, statusFilter]);
+    let filtered = compareData;
+    
+    // Apply mismatch-only filter if enabled
+    if (showOnlyMismatches) {
+      filtered = filtered.filter(r => !r.isMatch);
+    }
+    
+    // Apply status filter
+    if (statusFilter !== 'all') {
+      if (statusFilter === 'match') {
+        filtered = filtered.filter(r => r.isMatch);
+      } else {
+        filtered = filtered.filter(r => !r.isMatch);
+      }
+    }
+    
+    return filtered;
+  }, [compareData, statusFilter, showOnlyMismatches]);
 
   if (!csvData || !pdfData) {
     return (
@@ -179,8 +198,118 @@ export function ComparisonViewer({ csvData, pdfData }: ComparisonViewerProps) {
     return details;
   };
 
+  const copyMismatchesInTableFormat = async (): Promise<void> => {
+    // Filter to only mismatches
+    const mismatchResults = compareData.filter(r => !r.isMatch);
+
+    // Generate HTML table with inline styles
+    const tableStyles = `
+      border-collapse: collapse;
+      width: 100%;
+      font-family: Arial, sans-serif;
+      font-size: 12px;
+    `;
+    
+    const headerStyles = `
+      background-color: #f8f9fa;
+      border: 1px solid #dee2e6;
+      padding: 8px;
+      text-align: left;
+      font-weight: bold;
+    `;
+    
+    const cellStyles = `
+      border: 1px solid #dee2e6;
+      padding: 8px;
+      text-align: left;
+    `;
+    
+    const getStatusLabel = (result: ComparisonResult): string => {
+      if (result.discrepancies.classMismatch && result.discrepancies.trainerMismatch) return 'Class & Trainer Mismatch';
+      if (result.discrepancies.classMismatch) return 'Class Mismatch';
+      if (result.discrepancies.trainerMismatch) return 'Trainer Mismatch';
+      if (result.discrepancies.csvMissing) return 'Not in CSV';
+      if (result.discrepancies.pdfMismatch) return 'Not in PDF';
+      return 'Mismatch';
+    };
+    
+    let htmlTable = `<table style="${tableStyles}">\n`;
+    
+    // Add header row
+    htmlTable += `<tr>\n`;
+    htmlTable += `<td style="${headerStyles}">Day</td>`;
+    htmlTable += `<td style="${headerStyles}">CSV Time</td>`;
+    htmlTable += `<td style="${headerStyles}">CSV Class</td>`;
+    htmlTable += `<td style="${headerStyles}">CSV Trainer</td>`;
+    htmlTable += `<td style="${headerStyles}">CSV Location</td>`;
+    htmlTable += `<td style="${headerStyles}">Status</td>`;
+    htmlTable += `<td style="${headerStyles}">PDF Time</td>`;
+    htmlTable += `<td style="${headerStyles}">PDF Class</td>`;
+    htmlTable += `<td style="${headerStyles}">PDF Trainer</td>`;
+    htmlTable += `<td style="${headerStyles}">PDF Location</td>`;
+    htmlTable += `</tr>\n`;
+    
+    // Add data rows
+    mismatchResults.forEach(result => {
+      htmlTable += `<tr>\n`;
+      htmlTable += `<td style="${cellStyles}">${result.day}</td>`;
+      htmlTable += `<td style="${cellStyles}">${result.csv?.time || '—'}</td>`;
+      htmlTable += `<td style="${cellStyles}">${result.csv?.className || '—'}</td>`;
+      htmlTable += `<td style="${cellStyles}">${result.csv?.trainer1 || '—'}</td>`;
+      htmlTable += `<td style="${cellStyles}">${result.csv?.location || '—'}</td>`;
+      htmlTable += `<td style="${cellStyles}">${getStatusLabel(result)}</td>`;
+      htmlTable += `<td style="${cellStyles}">${result.pdf?.time || '—'}</td>`;
+      htmlTable += `<td style="${cellStyles}">${result.pdf?.className || '—'}</td>`;
+      htmlTable += `<td style="${cellStyles}">${result.pdf?.trainer || '—'}</td>`;
+      htmlTable += `<td style="${cellStyles}">${result.pdf?.location || '—'}</td>`;
+      htmlTable += `</tr>\n`;
+    });
+    
+    htmlTable += `</table>`;
+    
+    try {
+      await navigator.clipboard.writeText(htmlTable);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      toast({
+        title: "Mismatches Copied!",
+        description: `Copied ${mismatchResults.length} mismatch rows in HTML table format to clipboard`,
+      });
+    } catch (err) {
+      console.error('Failed to copy to clipboard:', err);
+      toast({
+        title: "Copy Failed",
+        description: "Could not copy to clipboard. Please try again.",
+        variant: "destructive"
+      });
+    }
+  };
+
   return (
     <div className="flex flex-col h-full space-y-4">
+      {/* Action Buttons */}
+      <div className="flex gap-2 flex-wrap p-3 bg-slate-50 rounded-lg border border-slate-200">
+        <Button
+          variant={showOnlyMismatches ? "default" : "outline"}
+          size="sm"
+          onClick={() => setShowOnlyMismatches(!showOnlyMismatches)}
+          className="gap-2"
+        >
+          <AlertTriangle className="w-4 h-4" />
+          {showOnlyMismatches ? 'Show All' : 'Show Only Mismatches'}
+        </Button>
+        
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={copyMismatchesInTableFormat}
+          className="gap-2"
+        >
+          {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+          Copy Mismatches Table
+        </Button>
+      </div>
+
       {/* Status Filter */}
       <div className="flex gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
         <span className="text-sm font-medium text-slate-600 mr-2">Status:</span>

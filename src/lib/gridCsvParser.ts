@@ -1,5 +1,6 @@
 import type { WeekSchedule, DaySchedule, ScheduleClass, ClassLevel } from '@/types/schedule';
 import { normalizeTime, normalizeTrainer, normalizeLocation, normalizeClassName, normalizeDay } from './normalizers';
+import { shouldExcludeClass } from './csvParser';
 
 /**
  * Parse a grid-style schedule CSV where:

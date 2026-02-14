@@ -20,7 +20,7 @@ const EXCLUDED_TRAINERS = [
 /**
  * Check if a class should be excluded based on trainer and cover fields
  */
-function shouldExcludeClass(rawTrainer: string, rawCover: string): boolean {
+export function shouldExcludeClass(rawTrainer: string, rawCover: string): boolean {
   const trainer1 = rawTrainer?.trim() || '';
   const cover = rawCover?.trim() || '';
   
@@ -30,10 +30,17 @@ function shouldExcludeClass(rawTrainer: string, rawCover: string): boolean {
   }
   
   // Check if either trainer1 or cover matches excluded names
-  const trainerToCheck = cover || trainer1;
-  return EXCLUDED_TRAINERS.some(excludedName => 
-    trainerToCheck.toLowerCase().includes(excludedName.toLowerCase())
+  const trainerToCheck = (cover || trainer1).trim();
+  const shouldExclude = EXCLUDED_TRAINERS.some(excludedName => 
+    trainerToCheck.toLowerCase().includes(excludedName.toLowerCase().trim())
   );
+  
+  // Debug logging for excluded trainers
+  if (shouldExclude) {
+    console.log(`[CSV Parser] Excluding class with trainer: "${trainerToCheck}"`);
+  }
+  
+  return shouldExclude;
 }
 
 interface CSVRow {

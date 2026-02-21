@@ -8,7 +8,7 @@ import { shouldExcludeClass } from './csvParser';
  * - Row 2: dates per day block
  * - Row 3: day names
  * - Row 4+: time slots with class data
- * - Each day = 5 columns: Location, Class, Trainer1, Trainer2, Cover
+ * - Each day = 6 columns: Location, Class, Trainer1, Trainer2, Cover, Theme
  * - Column A = time
  */
 
@@ -52,38 +52,32 @@ function parseToGrid(csvString: string): string[][] {
 
 /**
  * Detect day blocks by scanning the date row and day name row
+ * Updated for 6-column format: Location, Class, Trainer1, Trainer2, Cover, Theme
  */
 function detectDayBlocks(grid: string[][]): DayBlock[] {
   if (grid.length < 3) return [];
 
-  const dateRow = grid[1]; // Row 2 (0-indexed: 1)
-  const dayRow = grid[2];  // Row 3 (0-indexed: 2)
+  const dateRow = grid[0]; // Row 1 (0-indexed: 0) - dates are in the first row
+  const dayRow = grid[1];  // Row 2 (0-indexed: 1) - day names are in the second row
   const blocks: DayBlock[] = [];
 
-  // Strategy 1: Find date cells (non-empty cells in row 2, skipping col A)
-  for (let col = 1; col < dateRow.length; col++) {
+  // Strategy 1: Find date cells (non-empty cells in row 1, skipping col A)
+  // Each day starts at columns: 1, 7, 13, 19, 25, 31, 37 (pattern: 1 + dayIndex * 6)
+  const expectedColumns = [1, 7, 13, 19, 25, 31, 37]; // Monday through Sunday
+  
+  for (let i = 0; i < expectedColumns.length && i < DAYS_IN_ORDER.length; i++) {
+    const col = expectedColumns[i];
+    if (col >= dateRow.length) break;
+    
     const cell = dateRow[col];
     if (cell && cell.trim()) {
-      // Check if it looks like a date
-      const isDate = /\d{1,2}\s+\w+\s+\d{4}/.test(cell.trim()) || 
-                     /\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/.test(cell.trim());
+      // Check if it looks like a date (flexible patterns)
+      const isDate = /\d{1,2}[\s\-\/]\w+/.test(cell.trim()) || 
+                     /\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/.test(cell.trim()) ||
+                     /\w+[\s\-]\d{1,2}/.test(cell.trim());
+      
       if (isDate) {
-        // Find matching day name from row 3
-        let dayName = '';
-        // Check same column or nearby columns in day row
-        for (let dc = col; dc < Math.min(col + 5, dayRow.length); dc++) {
-          const candidate = dayRow[dc]?.trim();
-          if (candidate && DAYS_IN_ORDER.some(d => d.toLowerCase() === candidate.toLowerCase())) {
-            dayName = DAYS_IN_ORDER.find(d => d.toLowerCase() === candidate.toLowerCase()) || '';
-            break;
-          }
-        }
-
-        // If no day name found, infer from position
-        if (!dayName && blocks.length < 7) {
-          dayName = DAYS_IN_ORDER[blocks.length];
-        }
-
+        const dayName = DAYS_IN_ORDER[i];
         blocks.push({
           day: dayName,
           date: cell.trim(),
@@ -93,9 +87,27 @@ function detectDayBlocks(grid: string[][]): DayBlock[] {
     }
   }
 
-  // Strategy 2 fallback: scan day name row directly
+  // Strategy 2 fallback: scan day name row directly at expected positions
   if (blocks.length === 0) {
-    for (let col = 1; col < dayRow.length; col++) {
+    for (let i = 0; i < expectedColumns.length && i < DAYS_IN_ORDER.length; i++) {
+      const col = expectedColumns[i];
+      if (col >= dayRow.length) break;
+      
+      const cell = dayRow[col]?.trim().toLowerCase();
+      const expectedDay = DAYS_IN_ORDER[i];
+      if (cell && expectedDay.toLowerCase().includes(cell) || cell.includes(expectedDay.toLowerCase())) {
+        blocks.push({
+          day: expectedDay,
+          date: dateRow[col]?.trim() || '',
+          startCol: col,
+        });
+      }
+    }
+  }
+
+  // Strategy 3: If still no blocks, try scanning all columns for day names
+  if (blocks.length === 0) {
+    for (let col = 1; col < Math.min(dayRow.length, 50); col++) {
       const cell = dayRow[col]?.trim().toLowerCase();
       const matchedDay = DAYS_IN_ORDER.find(d => d.toLowerCase() === cell);
       if (matchedDay) {
@@ -149,7 +161,7 @@ export function isGridStyleCSV(csvString: string): boolean {
   const blocks = detectDayBlocks(grid);
   if (blocks.length < 2) return false;
 
-  // Check if column A has time-like values starting from row 4
+  // Check if column A has time-like values starting from row 3 (0-indexed: 2)
   let timeCount = 0;
   for (let row = 3; row < Math.min(grid.length, 15); row++) {
     const cell = grid[row]?.[0]?.trim();
@@ -179,7 +191,8 @@ export function parseGridCSV(csvString: string): WeekSchedule | null {
     const daySchedules: Map<string, ScheduleClass[]> = new Map();
     let classIndex = 0;
 
-    // Iterate through data rows (row 4+, 0-indexed: 3+)
+    // Iterate through data rows (row 3+, 0-indexed: 2+) 
+    // Row structure: 0=dates, 1=days, 2=headers, 3+=data
     for (let rowIdx = 3; rowIdx < grid.length; rowIdx++) {
       const row = grid[rowIdx];
       const rawTime = row[0]?.trim();
@@ -201,6 +214,7 @@ export function parseGridCSV(csvString: string): WeekSchedule | null {
         const rawTrainer1 = row[col + 2]?.trim() || '';
         const rawTrainer2 = row[col + 3]?.trim() || '';
         const rawCover = row[col + 4]?.trim() || '';
+        const rawTheme = row[col + 5]?.trim() || '';
 
         // Skip if no class data
         if (!rawClassName && !rawTrainer1) continue;
@@ -210,11 +224,17 @@ export function parseGridCSV(csvString: string): WeekSchedule | null {
           continue;
         }
 
+        // Skip classes with "hosted" in the name (case-insensitive)
+        if (rawClassName && rawClassName.toLowerCase().includes('hosted')) {
+          continue;
+        }
+
         // Apply normalization
         const location = rawLocation ? normalizeLocation(rawLocation) : undefined;
         const className = normalizeClassName(rawClassName);
         const trainer1 = normalizeTrainer(rawTrainer1);
         const cover = (rawCover && rawCover.trim() !== '') ? normalizeTrainer(rawCover) : '';
+        const theme = rawTheme || undefined;
         
         // Apply cover logic: if cover is present and non-empty, use cover as the trainer
         const effectiveTrainer = cover ? cover : trainer1;
@@ -230,6 +250,7 @@ export function parseGridCSV(csvString: string): WeekSchedule | null {
           trainer: effectiveTrainer,
           location: location || undefined,
           level: determineLevel(className),
+          theme,
         });
       }
     }

@@ -8,6 +8,7 @@ export interface ScheduleClass {
   trainer: string;
   location?: string;
   level?: ClassLevel;
+  theme?: string;
 }
 
 // CSV parsed data
@@ -21,6 +22,7 @@ export interface ClassData {
   trainer1: string;
   cover: string;
   notes: string;
+  theme?: string;
   uniqueKey: string;
 }
 
@@ -46,6 +48,7 @@ export interface NormalizedClass {
   location?: string;
   normalizedLocation?: string;
   level?: ClassLevel;
+  theme?: string;
 }
 
 export interface ComparedClass extends NormalizedClass {

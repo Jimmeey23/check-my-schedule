@@ -9,6 +9,7 @@ import {
 import { normalizeClassName, normalizeTrainer, normalizeLocation, normalizeTime } from '@/lib/normalizers';
 import { invokeMomenceFunction } from '@/lib/supabaseClient';
 import { toast } from '@/hooks/use-toast';
+import { assessMatch } from '@/lib/matchingUtils';
 import type { MomenceSession, MomenceClassData } from '@/types/momence';
 import type { ClassData, PdfClassData } from '@/types/schedule';
 import { cn } from '@/lib/utils';
@@ -170,7 +171,7 @@ export function MomenceTab({ startDate, endDate, csvData, pdfData }: MomenceTabP
         if (dayIndex !== -1) {
           // Calculate the date for this day within the week
           const startDayIndex = weekStart.getDay();
-          let targetDate = new Date(weekStart);
+          const targetDate = new Date(weekStart);
           
           // Calculate days to add/subtract to get to the target day
           let daysToAdd = dayIndex - startDayIndex;
@@ -277,39 +278,60 @@ export function MomenceTab({ startDate, endDate, csvData, pdfData }: MomenceTabP
     for (const mClass of filteredSessions) {
       let bestIdx = -1;
       let bestScore = 0;
+      let bestAssessment: ReturnType<typeof assessMatch> | null = null;
 
       sourceData.forEach((src, idx) => {
         if (usedSourceIdx.has(idx)) return;
         if (src.day !== mClass.day) return;
 
-        let score = 0;
-        if (mClass.time === src.time) score += 40;
-        if (mClass.className === src.className) score += 30;
-        if (mClass.trainer === src.trainer) score += 20;
+        const assessment = assessMatch(
+          {
+            day: mClass.day,
+            time: mClass.time,
+            className: mClass.className,
+            trainer: mClass.trainer,
+            location: mClass.location,
+          },
+          {
+            day: src.day,
+            time: src.time,
+            className: src.className,
+            trainer: src.trainer,
+            location: src.location,
+          }
+        );
 
-        if (score > bestScore) {
+        const score = assessment.score;
+        const isBetter =
+          score > bestScore ||
+          (score === bestScore && bestAssessment && assessment.timeDiffMinutes < bestAssessment.timeDiffMinutes);
+
+        if (isBetter) {
           bestScore = score;
           bestIdx = idx;
+          bestAssessment = assessment;
         }
       });
 
-      if (bestIdx >= 0 && bestScore >= 40) {
+      if (bestIdx >= 0 && bestScore >= 62 && bestAssessment) {
         usedSourceIdx.add(bestIdx);
         const src = sourceData[bestIdx];
 
-        let status: MismatchType = 'match';
-        let matchNote = '';
-        
-        if (mClass.time !== src.time) {
-          status = 'time-mismatch';
-        } else if (mClass.className !== src.className) {
-          status = 'class-mismatch';
-        } else {
-          // Time and class match - this is considered a match even if trainer differs
+        let status: MismatchType;
+        let matchNote: string | undefined;
+
+        if (!bestAssessment.timeMismatch && !bestAssessment.classMismatch && !bestAssessment.trainerMismatch) {
           status = 'match';
-          if (mClass.trainer !== src.trainer) {
-            matchNote = 'trainer-substitution';
-          }
+          matchNote = 'exact';
+        } else if (bestAssessment.timeMismatch) {
+          status = 'time-mismatch';
+        } else if (bestAssessment.classMismatch) {
+          status = 'class-mismatch';
+        } else if (bestAssessment.trainerMismatch) {
+          status = 'trainer-mismatch';
+          matchNote = 'trainer-substitution';
+        } else {
+          status = 'match';
         }
 
         rows.push({ day: mClass.day, momence: mClass, source: src, status, matchNote });

@@ -1,27 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { ClassData, PdfClassData, FilterState } from '@/types/schedule';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { FilterSection } from './FilterSection';
 import { passesFilters } from '@/lib/filterUtils';
 import { toast } from '@/hooks/use-toast';
+import { alignCsvPdfData, type CsvPdfMatchStatus } from '@/lib/classDataMatcher';
+import { normalizeTime } from '@/lib/normalizers';
 import { 
   CheckCircle2, 
   AlertTriangle, 
-  ArrowLeftRight, 
   FileSpreadsheet, 
   FileText, 
   Users, 
   BookOpen, 
   Clock,
-  Filter,
   Copy,
   Check,
-  ChevronDown,
-  ChevronRight,
   Download,
-  Wand2
+  Wand2,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 
 interface SideBySideViewerProps {
@@ -32,16 +31,22 @@ interface SideBySideViewerProps {
 type MismatchType = 'match' | 'trainer-mismatch' | 'class-mismatch' | 'time-mismatch' | 'csv-only' | 'pdf-only';
 type QuickFilter = 'all' | 'matches' | 'trainer-mismatch' | 'class-mismatch' | 'time-mismatch' | 'csv-only' | 'pdf-only';
 
+interface AlignedRow {
+  day: string;
+  csvClass: ClassData | null;
+  pdfClass: PdfClassData | null;
+  matchStatus: CsvPdfMatchStatus;
+}
+
+const DAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
 export function SideBySideViewer({ csvData, pdfData }: SideBySideViewerProps) {
   const [filters, setFilters] = useState<FilterState>({ day: [], location: [], trainer: [], className: [] });
-  const [flattenedCsvData, setFlattenedCsvData] = useState<ClassData[]>([]);
-  const [filteredCsvData, setFilteredCsvData] = useState<ClassData[]>([]);
-  const [filteredPdfData, setFilteredPdfData] = useState<PdfClassData[]>([]);
   const [editablePdfData, setEditablePdfData] = useState<PdfClassData[]>([]);
-  const [editingCell, setEditingCell] = useState<{rowIndex: number; field: string} | null>(null);
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
   const [copied, setCopied] = useState(false);
   const [showOnlyMismatches, setShowOnlyMismatches] = useState(false);
+  const [activeMismatchIndex, setActiveMismatchIndex] = useState(0);
   
   useEffect(() => {
     if (pdfData) {
@@ -49,219 +54,62 @@ export function SideBySideViewer({ csvData, pdfData }: SideBySideViewerProps) {
     }
   }, [pdfData]);
   
-  useEffect(() => {
-    if (!csvData) return;
-    const flattened: ClassData[] = [];
-    Object.values(csvData).forEach(dayClasses => {
-      flattened.push(...dayClasses);
-    });
-    setFlattenedCsvData(flattened);
-  }, [csvData]);
-  
-  useEffect(() => {
-    if (!csvData || !pdfData) return;
-    
-    const csvFiltered = flattenedCsvData.filter(item => 
-      passesFilters({
-        day: item.day,
-        location: item.location,
-        trainer: item.trainer1,
-        className: item.className
-      }, filters)
-    );
-    
-    const pdfFiltered = pdfData.filter(item => 
-      passesFilters({
-        day: item.day,
-        location: item.location,
-        trainer: item.trainer,
-        className: item.className
-      }, filters)
-    );
-    
-    setFilteredCsvData(csvFiltered);
-    setFilteredPdfData(pdfFiltered);
-  }, [csvData, pdfData, flattenedCsvData, filters]);
-  
   const handleFilterChange = (newFilters: FilterState) => {
     setFilters(newFilters);
     localStorage.setItem('csvFilters', JSON.stringify(newFilters));
   };
+  const allAlignedData = useMemo<AlignedRow[]>(() => {
+    const alignedRows = alignCsvPdfData(csvData, pdfData);
 
-  const parseTimeToMinutes = (timeStr: string): number => {
-    if (!timeStr) return 0;
-    const match = timeStr.match(/(\d{1,2})[:.:](\d{2})\s*(AM|PM)?/i);
-    if (match) {
-      let hours = parseInt(match[1]);
-      const minutes = parseInt(match[2]);
-      const period = match[3]?.toUpperCase();
-      
-      if (period === 'PM' && hours !== 12) hours += 12;
-      if (period === 'AM' && hours === 12) hours = 0;
-      
-      return hours * 60 + minutes;
-    }
-    return 0;
-  };
+    return alignedRows
+      .filter(row =>
+        passesFilters(
+          {
+            day: row.day,
+            location: row.csvClass?.location || row.pdfClass?.location || '',
+            trainer: row.csvClass?.trainer1 || row.pdfClass?.trainer || '',
+            className: row.csvClass?.className || row.pdfClass?.className || '',
+          },
+          filters
+        )
+      )
+      .map(row => ({
+        day: row.day,
+        csvClass: row.csvClass,
+        pdfClass: row.pdfClass,
+        matchStatus: row.status,
+      }));
+  }, [csvData, pdfData, filters]);
 
-  const normalizeTimeKey = (timeStr: string): string => {
-    const minutes = parseTimeToMinutes(timeStr);
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
-  };
-
-  const daysOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-  const groupedCsvData: {[day: string]: ClassData[]} = {};
-  const groupedPdfData: {[day: string]: PdfClassData[]} = {};
-  
-  filteredCsvData.forEach(item => {
-    if (!groupedCsvData[item.day]) groupedCsvData[item.day] = [];
-    groupedCsvData[item.day].push(item);
-  });
-  
-  filteredPdfData.forEach(item => {
-    if (!groupedPdfData[item.day]) groupedPdfData[item.day] = [];
-    groupedPdfData[item.day].push(item);
-  });
-  
-  const allDays = Array.from(new Set([
-    ...Object.keys(groupedCsvData),
-    ...Object.keys(groupedPdfData)
-  ])).sort((a, b) => {
-    const aIndex = daysOrder.indexOf(a);
-    const bIndex = daysOrder.indexOf(b);
-    if (aIndex === -1 && bIndex === -1) return a.localeCompare(b);
-    if (aIndex === -1) return 1;
-    if (bIndex === -1) return -1;
-    return aIndex - bIndex;
-  });
-
-  interface AlignedRow {
-    day: string;
-    displayTime: string;
-    sortKey: number;
-    csvClass: ClassData | null;
-    pdfClass: PdfClassData | null;
-    matchStatus: MismatchType;
-  }
-
-  const buildAlignedDayData = (day: string): AlignedRow[] => {
-    const csvClasses = [...(groupedCsvData[day] || [])].sort((a, b) => 
-      parseTimeToMinutes(a.time) - parseTimeToMinutes(b.time)
-    );
-    const pdfClasses = [...(groupedPdfData[day] || [])].sort((a, b) => 
-      parseTimeToMinutes(a.time) - parseTimeToMinutes(b.time)
-    );
-    
-    const alignedRows: AlignedRow[] = [];
-    const usedCsvIndices = new Set<number>();
-    const usedPdfIndices = new Set<number>();
-    
-    const getMatchStatus = (csvClass: ClassData | null, pdfClass: PdfClassData | null): MismatchType => {
-      if (!csvClass && pdfClass) return 'pdf-only';
-      if (csvClass && !pdfClass) return 'csv-only';
-      if (!csvClass || !pdfClass) return 'csv-only';
-      
-      const csvTimeKey = normalizeTimeKey(csvClass.time);
-      const pdfTimeKey = normalizeTimeKey(pdfClass.time);
-      const timeMatches = csvTimeKey === pdfTimeKey;
-      
-      const csvClassName = csvClass.className.toLowerCase().replace('studio ', '');
-      const pdfClassName = pdfClass.className.toLowerCase().replace('studio ', '');
-      const classMatches = csvClassName.includes(pdfClassName) || pdfClassName.includes(csvClassName);
-      
-      const trainerMatches = csvClass.trainer1 === pdfClass.trainer;
-      
-      if (!timeMatches) return 'time-mismatch';
-      if (!classMatches) return 'class-mismatch';
-      if (!trainerMatches) return 'trainer-mismatch';
-      
-      return 'match';
-    };
-    
-    csvClasses.forEach((csvClass, csvIdx) => {
-      const csvTimeKey = normalizeTimeKey(csvClass.time);
-      const csvSortKey = parseTimeToMinutes(csvClass.time);
-      
-      const matchingPdfIdx = pdfClasses.findIndex((pdfClass, pdfIdx) => {
-        if (usedPdfIndices.has(pdfIdx)) return false;
-        const pdfTimeKey = normalizeTimeKey(pdfClass.time);
-        return pdfTimeKey === csvTimeKey && 
-          (pdfClass.className.toLowerCase().includes(csvClass.className.toLowerCase().replace('studio ', '')) ||
-           csvClass.className.toLowerCase().includes(pdfClass.className.toLowerCase().replace('studio ', '')));
-      });
-      
-      if (matchingPdfIdx !== -1) {
-        usedCsvIndices.add(csvIdx);
-        usedPdfIndices.add(matchingPdfIdx);
-        const pdfClass = pdfClasses[matchingPdfIdx];
-        alignedRows.push({
-          day,
-          displayTime: csvClass.time,
-          sortKey: csvSortKey,
-          csvClass: csvClass,
-          pdfClass: pdfClass,
-          matchStatus: getMatchStatus(csvClass, pdfClass)
-        });
-      }
+  const allDays = useMemo(() => {
+    return Array.from(new Set(allAlignedData.map(row => row.day))).sort((a, b) => {
+      const aIndex = DAY_ORDER.indexOf(a);
+      const bIndex = DAY_ORDER.indexOf(b);
+      if (aIndex === -1 && bIndex === -1) return a.localeCompare(b);
+      if (aIndex === -1) return 1;
+      if (bIndex === -1) return -1;
+      return aIndex - bIndex;
     });
-    
-    csvClasses.forEach((csvClass, csvIdx) => {
-      if (usedCsvIndices.has(csvIdx)) return;
-      const csvTimeKey = normalizeTimeKey(csvClass.time);
-      const csvSortKey = parseTimeToMinutes(csvClass.time);
-      
-      const pdfAtSameTime = pdfClasses.find((pdfClass, pdfIdx) => {
-        if (usedPdfIndices.has(pdfIdx)) return false;
-        return normalizeTimeKey(pdfClass.time) === csvTimeKey;
-      });
-      
-      if (pdfAtSameTime) {
-        const pdfIdx = pdfClasses.indexOf(pdfAtSameTime);
-        usedPdfIndices.add(pdfIdx);
-        alignedRows.push({
-          day,
-          displayTime: csvClass.time,
-          sortKey: csvSortKey,
-          csvClass: csvClass,
-          pdfClass: pdfAtSameTime,
-          matchStatus: getMatchStatus(csvClass, pdfAtSameTime)
-        });
-      } else {
-        alignedRows.push({
-          day,
-          displayTime: csvClass.time,
-          sortKey: csvSortKey,
-          csvClass: csvClass,
-          pdfClass: null,
-          matchStatus: 'csv-only'
-        });
-      }
+  }, [allAlignedData]);
+
+  const rowsByDay = useMemo(() => {
+    const grouped = new Map<string, AlignedRow[]>();
+    allAlignedData.forEach(row => {
+      const bucket = grouped.get(row.day) || [];
+      bucket.push(row);
+      grouped.set(row.day, bucket);
     });
-    
-    pdfClasses.forEach((pdfClass, pdfIdx) => {
-      if (usedPdfIndices.has(pdfIdx)) return;
-      const pdfSortKey = parseTimeToMinutes(pdfClass.time);
-      
-      alignedRows.push({
-        day,
-        displayTime: pdfClass.time,
-        sortKey: pdfSortKey,
-        csvClass: null,
-        pdfClass: pdfClass,
-        matchStatus: 'pdf-only'
+
+    grouped.forEach(rows => {
+      rows.sort((a, b) => {
+        const timeA = normalizeTime(a.csvClass?.time || a.pdfClass?.time || '');
+        const timeB = normalizeTime(b.csvClass?.time || b.pdfClass?.time || '');
+        return timeA.localeCompare(timeB);
       });
     });
-    
-    alignedRows.sort((a, b) => a.sortKey - b.sortKey);
-    return alignedRows;
-  };
 
-  const allAlignedData: AlignedRow[] = [];
-  allDays.forEach(day => {
-    allAlignedData.push(...buildAlignedDayData(day));
-  });
+    return grouped;
+  }, [allAlignedData]);
 
   let totalMatches = 0, totalTrainerMismatch = 0, totalClassMismatch = 0, totalTimeMismatch = 0, totalCsvOnly = 0, totalPdfOnly = 0;
 
@@ -277,25 +125,44 @@ export function SideBySideViewer({ csvData, pdfData }: SideBySideViewerProps) {
   });
 
   const totalMismatches = totalTrainerMismatch + totalClassMismatch + totalTimeMismatch;
+  const displayRowsByDay = allDays.map(day => {
+    let rows = [...(rowsByDay.get(day) || [])];
 
-  const filterRows = (rows: AlignedRow[]): AlignedRow[] => {
-    let filtered = rows;
-    
-    // Apply mismatch-only filter if enabled
     if (showOnlyMismatches) {
-      filtered = filtered.filter(row => row.matchStatus !== 'match');
+      rows = rows.filter(row => row.matchStatus !== 'match');
     }
-    
-    // Apply quick filter
+
     if (quickFilter !== 'all') {
       if (quickFilter === 'matches') {
-        filtered = filtered.filter(row => row.matchStatus === 'match');
+        rows = rows.filter(row => row.matchStatus === 'match');
       } else {
-        filtered = filtered.filter(row => row.matchStatus === quickFilter);
+        rows = rows.filter(row => row.matchStatus === quickFilter);
       }
     }
-    
-    return filtered;
+
+    return { day, rows };
+  });
+
+  const visibleRows = displayRowsByDay.flatMap(group => group.rows);
+  const mismatchRows = visibleRows.filter(row => row.matchStatus !== 'match');
+  const mismatchIndexByRow = new Map<AlignedRow, number>();
+  mismatchRows.forEach((row, index) => mismatchIndexByRow.set(row, index));
+
+  useEffect(() => {
+    if (activeMismatchIndex >= mismatchRows.length) {
+      setActiveMismatchIndex(0);
+    }
+  }, [activeMismatchIndex, mismatchRows.length]);
+
+  const scrollToMismatch = (targetIndex: number) => {
+    if (mismatchRows.length === 0) return;
+    const next = (targetIndex + mismatchRows.length) % mismatchRows.length;
+    setActiveMismatchIndex(next);
+
+    requestAnimationFrame(() => {
+      const row = document.querySelector<HTMLElement>(`[data-mismatch-index="${next}"]`);
+      row?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
   };
 
   const getStatusInfo = (status: MismatchType): { icon: React.ReactNode; label: string; color: string } => {
@@ -304,64 +171,39 @@ export function SideBySideViewer({ csvData, pdfData }: SideBySideViewerProps) {
         return { 
           icon: <CheckCircle2 className="w-4 h-4 text-emerald-600" />, 
           label: 'Match',
-          color: 'text-emerald-600'
+          color: 'text-slate-700'
         };
       case 'trainer-mismatch':
         return { 
-          icon: <Users className="w-4 h-4 text-orange-500" />, 
+          icon: <Users className="w-4 h-4 text-amber-700" />, 
           label: 'Trainer',
-          color: 'text-orange-500'
+          color: 'text-amber-800'
         };
       case 'class-mismatch':
         return { 
-          icon: <BookOpen className="w-4 h-4 text-purple-500" />, 
+          icon: <BookOpen className="w-4 h-4 text-amber-700" />, 
           label: 'Class',
-          color: 'text-purple-500'
+          color: 'text-amber-800'
         };
       case 'time-mismatch':
         return { 
-          icon: <Clock className="w-4 h-4 text-amber-500" />, 
+          icon: <Clock className="w-4 h-4 text-amber-700" />, 
           label: 'Time',
-          color: 'text-amber-500'
+          color: 'text-amber-800'
         };
       case 'csv-only':
         return { 
-          icon: <FileSpreadsheet className="w-4 h-4 text-blue-600" />, 
+          icon: <FileSpreadsheet className="w-4 h-4 text-amber-700" />, 
           label: 'CSV Only',
-          color: 'text-blue-600'
+          color: 'text-amber-800'
         };
       case 'pdf-only':
         return { 
-          icon: <FileText className="w-4 h-4 text-red-600" />, 
+          icon: <FileText className="w-4 h-4 text-amber-700" />, 
           label: 'PDF Only',
-          color: 'text-red-600'
+          color: 'text-amber-800'
         };
     }
-  };
-
-  const copyMismatchesToClipboard = () => {
-    const mismatchedRows = allAlignedData.filter(row => row.matchStatus !== 'match');
-    
-    if (mismatchedRows.length === 0) {
-      toast({
-        title: "No Mismatches",
-        description: "All classes match!",
-      });
-      return;
-    }
-
-    const text = mismatchedRows.map(row => 
-      `${row.day}\t${row.csvClass?.time || '—'}\t${row.csvClass?.className || '—'}\t${row.csvClass?.trainer1 || '—'}\t${row.pdfClass?.time || '—'}\t${row.pdfClass?.className || '—'}\t${row.pdfClass?.trainer || '—'}`
-    ).join('\n');
-
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      toast({
-        title: "Copied!",
-        description: `${mismatchedRows.length} mismatches copied`,
-      });
-      setTimeout(() => setCopied(false), 2000);
-    });
   };
 
   const generateCSVExport = (): string => {
@@ -524,10 +366,13 @@ export function SideBySideViewer({ csvData, pdfData }: SideBySideViewerProps) {
     });
   };
   
-  const handleCellEdit = (rowIndex: number, field: string, value: string) => {
+  const handleCellEdit = (rowIndex: number, field: 'time' | 'className' | 'trainer', value: string) => {
     const updated = [...editablePdfData];
     if (updated[rowIndex]) {
-      (updated[rowIndex] as any)[field] = value;
+      updated[rowIndex] = {
+        ...updated[rowIndex],
+        [field]: value,
+      };
       setEditablePdfData(updated);
     }
   };
@@ -573,6 +418,40 @@ export function SideBySideViewer({ csvData, pdfData }: SideBySideViewerProps) {
           Click any PDF cell (Time, Class, Trainer) to edit manually. Use "Auto-Correct" to apply CSV values to mismatches, then "Export Edited PDF Data" to download.
         </p>
       </div>
+
+      <div className="surface-card p-3 border border-amber-200 bg-amber-50/60">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-slate-900">Mismatch Focus</p>
+            <p className="text-xs text-slate-600">
+              {mismatchRows.length} highlighted issue{mismatchRows.length === 1 ? '' : 's'} out of {visibleRows.length} visible rows
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => scrollToMismatch(activeMismatchIndex - 1)}
+              disabled={mismatchRows.length === 0}
+              className="h-8 px-2.5"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <div className="text-xs font-semibold text-slate-700 min-w-[56px] text-center">
+              {mismatchRows.length > 0 ? `${activeMismatchIndex + 1}/${mismatchRows.length}` : '0/0'}
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => scrollToMismatch(activeMismatchIndex + 1)}
+              disabled={mismatchRows.length === 0}
+              className="h-8 px-2.5"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
       
       <FilterSection 
         data={csvData}
@@ -586,12 +465,12 @@ export function SideBySideViewer({ csvData, pdfData }: SideBySideViewerProps) {
         
         {[
           { key: 'all' as QuickFilter, label: 'All', count: totalMatches + totalMismatches + totalCsvOnly + totalPdfOnly },
-          { key: 'matches' as QuickFilter, label: 'Matches', count: totalMatches, color: 'emerald' },
-          { key: 'trainer-mismatch' as QuickFilter, label: 'Trainer Mismatch', count: totalTrainerMismatch, color: 'orange' },
-          { key: 'class-mismatch' as QuickFilter, label: 'Class Mismatch', count: totalClassMismatch, color: 'purple' },
-          { key: 'time-mismatch' as QuickFilter, label: 'Time Mismatch', count: totalTimeMismatch, color: 'amber' },
-          { key: 'csv-only' as QuickFilter, label: 'Not in PDF', count: totalCsvOnly, color: 'blue' },
-          { key: 'pdf-only' as QuickFilter, label: 'Not in CSV', count: totalPdfOnly, color: 'red' },
+          { key: 'matches' as QuickFilter, label: 'Matches', count: totalMatches },
+          { key: 'trainer-mismatch' as QuickFilter, label: 'Trainer Mismatch', count: totalTrainerMismatch },
+          { key: 'class-mismatch' as QuickFilter, label: 'Class Mismatch', count: totalClassMismatch },
+          { key: 'time-mismatch' as QuickFilter, label: 'Time Mismatch', count: totalTimeMismatch },
+          { key: 'csv-only' as QuickFilter, label: 'Not in PDF', count: totalCsvOnly },
+          { key: 'pdf-only' as QuickFilter, label: 'Not in CSV', count: totalPdfOnly },
         ].map(btn => (
           <Button
             key={btn.key}
@@ -680,8 +559,7 @@ export function SideBySideViewer({ csvData, pdfData }: SideBySideViewerProps) {
           </thead>
           <tbody>
             {allDays.map(day => {
-              const alignedData = buildAlignedDayData(day);
-              const displayData = filterRows(alignedData);
+              const displayData = displayRowsByDay.find(group => group.day === day)?.rows || [];
               
               return displayData.map((row, idx) => {
                 const statusInfo = getStatusInfo(row.matchStatus);
@@ -691,16 +569,22 @@ export function SideBySideViewer({ csvData, pdfData }: SideBySideViewerProps) {
                 const isTimeMismatch = row.matchStatus === 'time-mismatch';
                 const isPdfOnly = row.matchStatus === 'pdf-only';
                 const isCsvOnly = row.matchStatus === 'csv-only';
+                const mismatchIndex = mismatchIndexByRow.get(row);
+                const isActiveMismatch = mismatchIndex !== undefined && mismatchIndex === activeMismatchIndex;
                 
                 // Enhanced styling for matches and mismatches
                 const rowBgClass = isMatch 
-                  ? 'bg-emerald-50/40 hover:bg-emerald-50/60 border-l-2 border-l-emerald-400' 
+                  ? 'bg-white hover:bg-slate-50 border-l-2 border-l-transparent' 
                   : (isPdfOnly || isCsvOnly)
-                  ? 'bg-slate-50 hover:bg-slate-100 border-l-2 border-l-slate-300'
-                  : 'bg-amber-50/30 hover:bg-amber-50/50 border-l-2 border-l-amber-400';
+                  ? 'bg-amber-50/40 hover:bg-amber-50/70 border-l-4 border-l-amber-400'
+                  : 'bg-amber-50/70 hover:bg-amber-100/70 border-l-4 border-l-amber-500';
                 
                 return (
-                  <tr key={`${day}-${idx}`} className={`border-b border-slate-200/70 transition-colors ${rowBgClass}`}>
+                  <tr
+                    key={`${day}-${idx}`}
+                    data-mismatch-index={mismatchIndex !== undefined ? mismatchIndex : undefined}
+                    className={`border-b border-slate-200/70 transition-colors ${rowBgClass} ${isActiveMismatch ? 'ring-2 ring-blue-300 ring-inset' : ''}`}
+                  >
                     <td className="px-3 py-2 font-semibold text-slate-900">
                       {row.day}
                     </td>
@@ -710,10 +594,10 @@ export function SideBySideViewer({ csvData, pdfData }: SideBySideViewerProps) {
                     <td className={`px-3 py-2 font-mono ${isTimeMismatch ? 'text-amber-800 font-semibold bg-amber-100/60' : 'text-slate-800'} ${!row.csvClass ? 'bg-slate-100/70 text-slate-400' : ''}`}>
                       {row.csvClass?.time || '—'}
                     </td>
-                    <td className={`px-3 py-2 ${isClassMismatch ? 'text-purple-800 font-semibold bg-purple-100/60' : 'text-slate-800'} ${!row.csvClass ? 'bg-slate-100/70 text-slate-400' : ''}`}>
+                    <td className={`px-3 py-2 ${isClassMismatch ? 'text-slate-900 font-semibold bg-amber-100/70' : 'text-slate-800'} ${!row.csvClass ? 'bg-slate-100/70 text-slate-400' : ''}`}>
                       {row.csvClass?.className || '—'}
                     </td>
-                    <td className={`px-3 py-2 ${isTrainerMismatch ? 'text-orange-800 font-semibold bg-orange-100/60' : 'text-slate-700'} ${!row.csvClass ? 'bg-slate-100/70 text-slate-400' : ''}`}>
+                    <td className={`px-3 py-2 ${isTrainerMismatch ? 'text-slate-900 font-semibold bg-amber-100/70' : 'text-slate-700'} ${!row.csvClass ? 'bg-slate-100/70 text-slate-400' : ''}`}>
                       {row.csvClass?.trainer1 || '—'}
                     </td>
                     <td className="px-3 py-2 text-center bg-white/60">
@@ -735,7 +619,7 @@ export function SideBySideViewer({ csvData, pdfData }: SideBySideViewerProps) {
                         />
                       ) : '—'}
                     </td>
-                    <td className={`px-3 py-2 ${isClassMismatch ? 'text-purple-800 font-semibold bg-purple-100/60' : 'text-slate-800'} ${!row.pdfClass ? 'bg-slate-100/70 text-slate-400' : ''}`}>
+                    <td className={`px-3 py-2 ${isClassMismatch ? 'text-slate-900 font-semibold bg-amber-100/70' : 'text-slate-800'} ${!row.pdfClass ? 'bg-slate-100/70 text-slate-400' : ''}`}>
                       {row.pdfClass ? (
                         <input
                           type="text"
@@ -748,7 +632,7 @@ export function SideBySideViewer({ csvData, pdfData }: SideBySideViewerProps) {
                         />
                       ) : '—'}
                     </td>
-                    <td className={`px-3 py-2 ${isTrainerMismatch ? 'text-orange-800 font-semibold bg-orange-100/60' : 'text-slate-700'} ${!row.pdfClass ? 'bg-slate-100/70 text-slate-400' : ''}`}>
+                    <td className={`px-3 py-2 ${isTrainerMismatch ? 'text-slate-900 font-semibold bg-amber-100/70' : 'text-slate-700'} ${!row.pdfClass ? 'bg-slate-100/70 text-slate-400' : ''}`}>
                       {row.pdfClass ? (
                         <input
                           type="text"

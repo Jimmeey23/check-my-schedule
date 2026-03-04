@@ -67,14 +67,27 @@ async function extractTextItems(file: File): Promise<TextItem[][]> {
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const textContent = await page.getTextContent();
-    const items: TextItem[] = (textContent.items as any[])
-      .filter(item => item.str && item.str.trim())
+    const rawItems = textContent.items as Array<{
+      str?: string;
+      transform?: number[];
+      width?: number;
+      height?: number;
+    }>;
+
+    const items: TextItem[] = rawItems
+      .filter(
+        (item): item is { str: string; transform: number[]; width?: number; height?: number } =>
+          typeof item.str === 'string' &&
+          item.str.trim().length > 0 &&
+          Array.isArray(item.transform) &&
+          item.transform.length >= 6
+      )
       .map(item => ({
         str: item.str,
         x: Math.round(item.transform[4] * 100) / 100,
         y: Math.round(item.transform[5] * 100) / 100,
-        width: item.width,
-        height: item.height,
+        width: item.width || 0,
+        height: item.height || 0,
       }));
     allPages.push(items);
   }
@@ -610,10 +623,9 @@ export async function parsePDF(file: File): Promise<WeekSchedule> {
 }
 
 /**
- * Parse PDF and return PdfClassData array with normalized data
+ * Convert a parsed schedule into normalized PdfClassData rows.
  */
-export async function parsePDFToClassData(file: File): Promise<PdfClassData[]> {
-  const schedule = await parsePDF(file);
+export function scheduleToPdfClassData(schedule: WeekSchedule): PdfClassData[] {
   const result: PdfClassData[] = [];
 
   for (const daySchedule of schedule.days) {
@@ -639,4 +651,13 @@ export async function parsePDFToClassData(file: File): Promise<PdfClassData[]> {
   }
 
   return result;
+}
+
+/**
+ * Parse PDF and return PdfClassData array with normalized data.
+ * Accepts an already parsed schedule to avoid re-parsing the PDF when possible.
+ */
+export async function parsePDFToClassData(file: File, parsedSchedule?: WeekSchedule): Promise<PdfClassData[]> {
+  const schedule = parsedSchedule ?? await parsePDF(file);
+  return scheduleToPdfClassData(schedule);
 }

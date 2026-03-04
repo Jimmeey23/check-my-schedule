@@ -1,19 +1,17 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { ClassData, PdfClassData, ComparisonResult } from '@/types/schedule';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
-import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
+import { alignCsvPdfData } from '@/lib/classDataMatcher';
 import {
   CheckCircle2,
-  XCircle,
   AlertTriangle,
-  Clock,
-  Users,
-  BookOpen,
   FileSpreadsheet,
   FileText,
+  ChevronLeft,
+  ChevronRight,
   ChevronDown,
   Copy,
   Check,
@@ -32,116 +30,27 @@ export function ComparisonViewer({ csvData, pdfData }: ComparisonViewerProps) {
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [showOnlyMismatches, setShowOnlyMismatches] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [activeMismatchIndex, setActiveMismatchIndex] = useState(0);
 
   const compareData = useMemo(() => {
-    if (!csvData || !pdfData) return [];
+    return alignCsvPdfData(csvData, pdfData).map((row): ComparisonResult => {
+      const time = row.pdfClass?.time || row.csvClass?.time || '';
+      const isMatch = row.status === 'match';
 
-    const flatCsvData = Object.values(csvData).flat();
-    const results: ComparisonResult[] = [];
-
-    const parseTimeToMinutes = (timeStr: string): number => {
-      if (!timeStr) return 0;
-      const match = timeStr.match(/(\d{1,2})[:.:](\d{2})\s*(AM|PM)?/i);
-      if (match) {
-        let hours = parseInt(match[1]);
-        const minutes = parseInt(match[2]);
-        const period = match[3]?.toUpperCase();
-
-        if (period === 'PM' && hours !== 12) hours += 12;
-        if (period === 'AM' && hours === 12) hours = 0;
-
-        return hours * 60 + minutes;
-      }
-      return 0;
-    };
-
-    const normalizeTimeKey = (timeStr: string): string => {
-      const minutes = parseTimeToMinutes(timeStr);
-      const hours = Math.floor(minutes / 60);
-      const mins = minutes % 60;
-      return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
-    };
-
-    const csvUsed = new Set<number>();
-
-    // Match PDF items with CSV items
-    pdfData.forEach(pdfClass => {
-      const csvMatches = flatCsvData
-        .map((csv, idx) => ({ csv, idx }))
-        .filter(({ csv, idx }) => {
-          if (csvUsed.has(idx)) return false;
-          if (csv.day !== pdfClass.day) return false;
-
-          const csvTimeKey = normalizeTimeKey(csv.time);
-          const pdfTimeKey = normalizeTimeKey(pdfClass.time);
-
-          return csvTimeKey === pdfTimeKey;
-        });
-
-      if (csvMatches.length > 0) {
-        const match = csvMatches[0];
-        csvUsed.add(match.idx);
-        const csv = match.csv;
-
-        const csvClassName = csv.className.toLowerCase().replace('studio ', '');
-        const pdfClassName = pdfClass.className.toLowerCase().replace('studio ', '');
-        const classMatches = csvClassName.includes(pdfClassName) || pdfClassName.includes(csvClassName);
-        const trainerMatches = csv.trainer1 === pdfClass.trainer;
-
-        const isMatch = classMatches && trainerMatches;
-
-        results.push({
-          day: pdfClass.day,
-          time: pdfClass.time,
-          csv: csv,
-          pdf: pdfClass,
-          isMatch: isMatch,
-          discrepancies: {
-            classMismatch: !classMatches,
-            trainerMismatch: !trainerMatches,
-          },
-        });
-      } else {
-        results.push({
-          day: pdfClass.day,
-          time: pdfClass.time,
-          csv: null,
-          pdf: pdfClass,
-          isMatch: false,
-          discrepancies: {
-            csvMissing: true,
-          },
-        });
-      }
-    });
-
-    // Add unmatched CSV items
-    flatCsvData.forEach((csv, idx) => {
-      if (!csvUsed.has(idx)) {
-        results.push({
-          day: csv.day,
-          time: csv.time,
-          csv: csv,
-          pdf: null,
-          isMatch: false,
-          discrepancies: {
-            pdfMissing: true,
-          },
-        });
-      }
-    });
-
-    return results.sort((a, b) => {
-      const dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-      const dayA = dayOrder.indexOf(a.day);
-      const dayB = dayOrder.indexOf(b.day);
-
-      if (dayA !== dayB) return dayA - dayB;
-
-      const timeA = parseTimeToMinutes(a.time);
-      const timeB = parseTimeToMinutes(b.time);
-
-      return timeA - timeB;
+      return {
+        day: row.day,
+        time,
+        csv: row.csvClass,
+        pdf: row.pdfClass,
+        isMatch,
+        discrepancies: {
+          classMismatch: row.status === 'class-mismatch' || undefined,
+          trainerMismatch: row.status === 'trainer-mismatch' || undefined,
+          timeMismatch: row.status === 'time-mismatch' || undefined,
+          csvMissing: row.status === 'pdf-only' || undefined,
+          pdfMissing: row.status === 'csv-only' || undefined,
+        },
+      };
     });
   }, [csvData, pdfData]);
 
@@ -165,6 +74,26 @@ export function ComparisonViewer({ csvData, pdfData }: ComparisonViewerProps) {
     return filtered;
   }, [compareData, statusFilter, showOnlyMismatches]);
 
+  const mismatchResults = filteredResults.filter(result => !result.isMatch);
+  const mismatchIndexByResult = new Map<ComparisonResult, number>();
+  mismatchResults.forEach((result, index) => mismatchIndexByResult.set(result, index));
+
+  useEffect(() => {
+    if (activeMismatchIndex >= mismatchResults.length) {
+      setActiveMismatchIndex(0);
+    }
+  }, [activeMismatchIndex, mismatchResults.length]);
+
+  const scrollToMismatch = (targetIndex: number) => {
+    if (mismatchResults.length === 0) return;
+    const next = (targetIndex + mismatchResults.length) % mismatchResults.length;
+    setActiveMismatchIndex(next);
+    requestAnimationFrame(() => {
+      const row = document.querySelector<HTMLElement>(`[data-mismatch-index="${next}"]`);
+      row?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  };
+
   if (!csvData || !pdfData) {
     return (
       <Card className="flex flex-col items-center justify-center p-8 bg-white">
@@ -185,6 +114,10 @@ export function ComparisonViewer({ csvData, pdfData }: ComparisonViewerProps) {
 
     if (result.discrepancies.trainerMismatch) {
       details.push(`Trainer: "${result.csv?.trainer1}" (CSV) vs "${result.pdf?.trainer}" (PDF)`);
+    }
+
+    if (result.discrepancies.timeMismatch) {
+      details.push(`Time: "${result.csv?.time}" (CSV) vs "${result.pdf?.time}" (PDF)`);
     }
 
     if (result.discrepancies.csvMissing) {
@@ -228,8 +161,9 @@ export function ComparisonViewer({ csvData, pdfData }: ComparisonViewerProps) {
       if (result.discrepancies.classMismatch && result.discrepancies.trainerMismatch) return 'Class & Trainer Mismatch';
       if (result.discrepancies.classMismatch) return 'Class Mismatch';
       if (result.discrepancies.trainerMismatch) return 'Trainer Mismatch';
+      if (result.discrepancies.timeMismatch) return 'Time Mismatch';
       if (result.discrepancies.csvMissing) return 'Not in CSV';
-      if (result.discrepancies.pdfMismatch) return 'Not in PDF';
+      if (result.discrepancies.pdfMissing) return 'Not in PDF';
       return 'Mismatch';
     };
     
@@ -310,8 +244,42 @@ export function ComparisonViewer({ csvData, pdfData }: ComparisonViewerProps) {
         </Button>
       </div>
 
+      <div className="surface-card p-3 border border-amber-200 bg-amber-50/60">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-slate-900">Mismatch Focus</p>
+            <p className="text-xs text-slate-600">
+              {mismatchResults.length} highlighted issue{mismatchResults.length === 1 ? '' : 's'} in current view
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => scrollToMismatch(activeMismatchIndex - 1)}
+              disabled={mismatchResults.length === 0}
+              className="h-8 px-2.5"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <div className="text-xs font-semibold text-slate-700 min-w-[56px] text-center">
+              {mismatchResults.length > 0 ? `${activeMismatchIndex + 1}/${mismatchResults.length}` : '0/0'}
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => scrollToMismatch(activeMismatchIndex + 1)}
+              disabled={mismatchResults.length === 0}
+              className="h-8 px-2.5"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
+
       {/* Status Filter */}
-      <div className="flex gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+      <div className="flex gap-2 p-3 bg-slate-50 rounded-lg border border-slate-200">
         <span className="text-sm font-medium text-slate-600 mr-2">Status:</span>
         {[
           { key: 'all' as StatusFilter, label: 'All', count: compareData.length, color: 'slate' },
@@ -347,32 +315,44 @@ export function ComparisonViewer({ csvData, pdfData }: ComparisonViewerProps) {
           </thead>
           <tbody>
             {filteredResults.map((result, idx) => {
+              const mismatchIndex = mismatchIndexByResult.get(result);
+              const isActiveMismatch = mismatchIndex !== undefined && mismatchIndex === activeMismatchIndex;
               // Enhanced styling with subtle backgrounds
               const rowBgClass = result.isMatch 
-                ? 'bg-emerald-50/40 hover:bg-emerald-50/60 border-l-2 border-l-emerald-400' 
-                : 'bg-amber-50/30 hover:bg-amber-50/50 border-l-2 border-l-amber-400';
+                ? 'bg-white hover:bg-slate-50 border-l-2 border-l-transparent' 
+                : 'bg-amber-50/70 hover:bg-amber-100/70 border-l-4 border-l-amber-500';
               
               return (
-              <tr key={idx} className={`border-b border-slate-200 transition-colors ${rowBgClass}`}>
+              <tr
+                key={idx}
+                data-mismatch-index={mismatchIndex !== undefined ? mismatchIndex : undefined}
+                className={`border-b border-slate-200 transition-colors ${rowBgClass} ${isActiveMismatch ? 'ring-2 ring-blue-300 ring-inset' : ''}`}
+              >
                 <td className="border border-slate-300 px-3 py-2 text-center">
                   {result.isMatch ? (
                     <CheckCircle2 className="w-5 h-5 text-emerald-500 inline" />
                   ) : (
-                    <XCircle className="w-5 h-5 text-red-500 inline" />
+                    <AlertTriangle className="w-5 h-5 text-amber-700 inline" />
                   )}
                 </td>
                 <td className="border border-slate-300 px-3 py-2 font-semibold text-slate-800">{result.day}</td>
-                <td className="border border-slate-300 px-3 py-2 font-mono text-slate-700">{result.time}</td>
+                <td
+                  className={`border border-slate-300 px-3 py-2 font-mono ${
+                    result.discrepancies.timeMismatch ? 'text-amber-800 font-semibold bg-amber-100/50' : 'text-slate-700'
+                  }`}
+                >
+                  {result.time}
+                </td>
                 <td className="border border-slate-300 px-3 py-2 text-slate-700">
                   {result.csv?.location || result.pdf?.location || '—'}
                 </td>
-                <td className={`border border-slate-300 px-3 py-2 ${result.discrepancies.classMismatch ? 'text-purple-700 font-semibold bg-purple-100/50' : 'text-slate-700'}`}>
+                <td className={`border border-slate-300 px-3 py-2 ${result.discrepancies.classMismatch ? 'text-slate-900 font-semibold bg-amber-100/70' : 'text-slate-700'}`}>
                   {result.csv?.className || result.pdf?.className || '—'}
                 </td>
-                <td className={`border border-slate-300 px-3 py-2 ${result.discrepancies.trainerMismatch ? 'text-orange-700 font-semibold bg-orange-100/50' : 'text-slate-700'}`}>
+                <td className={`border border-slate-300 px-3 py-2 ${result.discrepancies.trainerMismatch ? 'text-slate-900 font-semibold bg-amber-100/70' : 'text-slate-700'}`}>
                   {result.csv?.trainer1 || '—'}
                 </td>
-                <td className={`border border-slate-300 px-3 py-2 ${result.discrepancies.trainerMismatch ? 'text-orange-700 font-semibold bg-orange-100/50' : 'text-slate-700'}`}>
+                <td className={`border border-slate-300 px-3 py-2 ${result.discrepancies.trainerMismatch ? 'text-slate-900 font-semibold bg-amber-100/70' : 'text-slate-700'}`}>
                   {result.pdf?.trainer || '—'}
                 </td>
                 <td className="border border-slate-300 px-3 py-2 text-center">
@@ -415,7 +395,7 @@ export function ComparisonViewer({ csvData, pdfData }: ComparisonViewerProps) {
                 {/* Header */}
                 <div className="flex gap-4 pb-4 border-b border-slate-200">
                   <div className="flex-1">
-                    <h3 className="font-semibold text-blue-600 flex items-center gap-2 mb-3">
+                    <h3 className="font-semibold text-slate-700 flex items-center gap-2 mb-3">
                       <FileSpreadsheet className="w-5 h-5" />
                       CSV Data
                     </h3>
@@ -431,7 +411,7 @@ export function ComparisonViewer({ csvData, pdfData }: ComparisonViewerProps) {
                   </div>
 
                   <div className="flex-1">
-                    <h3 className="font-semibold text-red-600 flex items-center gap-2 mb-3">
+                    <h3 className="font-semibold text-slate-700 flex items-center gap-2 mb-3">
                       <FileText className="w-5 h-5" />
                       PDF Data
                     </h3>

@@ -1,5 +1,6 @@
 import type { NormalizedClass, ComparedClass, ScheduleComparisonResult, DaySchedule, ClassLevel } from '@/types/schedule';
 import { classNameMappings, teacherNameMappings, locationMappings, classLevels, knownTeachers } from './normalizationMaps';
+import { assessMatch } from './matchingUtils';
 
 /**
  * Levenshtein distance for fuzzy matching
@@ -28,7 +29,7 @@ export function normalizeTime(rawTime: string): string {
   let time = rawTime.trim().replace(/\s+/g, ' ');
 
   // First pass: Replace special characters with colons (., ', ;, -, ~, |, \, /)
-  time = time.replace(/[.,';~\-\|\\\/]+/g, ':');
+  time = time.replace(/[.,';~|/\\-]+/g, ':');
   
   // Remove all spaces
   time = time.replace(/\s+/g, '');
@@ -104,16 +105,16 @@ export function normalizeClassName(name: string): string {
 
   // Handle Express classes in parentheses/brackets first
   let hasExpress = false;
-  const expressInParenMatch = cleaned.match(/\s*[\(\[]\s*(exp|express)\s*[\)\]]/i);
+  const expressInParenMatch = cleaned.match(/\s*[([]\s*(exp|express)\s*[)\]]/i);
   if (expressInParenMatch) {
     hasExpress = true;
-    cleaned = cleaned.replace(/\s*[\(\[]\s*(exp|express)\s*[\)\]]\s*/gi, '').trim();
+    cleaned = cleaned.replace(/\s*[([]\s*(exp|express)\s*[)\]]\s*/gi, '').trim();
   }
 
   // Remove bracketed content EXCEPT for Strength Lab classes and Express indicators
   if (!cleaned.toLowerCase().includes('strength lab')) {
     // Remove any content in parentheses or brackets for non-Strength Lab classes
-    cleaned = cleaned.replace(/\s*[\(\[].*?[\)\]]\s*/g, '').trim();
+    cleaned = cleaned.replace(/\s*[([].*?[)\]]\s*/g, '').trim();
   }
 
   // Add Express suffix if it was in parentheses
@@ -179,7 +180,7 @@ export function normalizeClassName(name: string): string {
  */
 export function normalizeTrainer(name: string): string {
   if (!name) return '';
-  let cleaned = name.trim().replace(/\s+/g, ' ');
+  const cleaned = name.trim().replace(/\s+/g, ' ');
 
   // Direct lookup
   if (teacherNameMappings[cleaned]) return teacherNameMappings[cleaned];
@@ -228,7 +229,7 @@ export function normalizeTrainer(name: string): string {
  */
 export function normalizeLocation(location: string | undefined): string | undefined {
   if (!location) return undefined;
-  let cleaned = location.trim().replace(/\s+/g, ' ');
+  const cleaned = location.trim().replace(/\s+/g, ' ');
 
   // Direct lookup
   if (locationMappings[cleaned]) return locationMappings[cleaned];
@@ -323,37 +324,49 @@ export function compareSchedules(
   for (const pdfClass of pdfClasses) {
     let bestMatch: NormalizedClass | undefined;
     let bestMatchScore = 0;
+    let bestAssessment: ReturnType<typeof assessMatch> | null = null;
     let differences: ComparedClass['differences'] = {};
 
     for (const csvClass of csvClasses) {
       if (matchedCsvIds.has(csvClass.id)) continue;
       if (pdfClass.day !== csvClass.day) continue;
 
-      let score = 0;
-      const tempDiffs: ComparedClass['differences'] = {};
+      const assessment = assessMatch(
+        {
+          day: pdfClass.day,
+          time: pdfClass.normalizedTime,
+          className: pdfClass.normalizedClassName,
+          trainer: pdfClass.normalizedTrainer,
+          location: pdfClass.normalizedLocation,
+        },
+        {
+          day: csvClass.day,
+          time: csvClass.normalizedTime,
+          className: csvClass.normalizedClassName,
+          trainer: csvClass.normalizedTrainer,
+          location: csvClass.normalizedLocation,
+        }
+      );
 
-      if (pdfClass.normalizedTime === csvClass.normalizedTime) score += 40;
-      else tempDiffs.time = true;
+      const score = assessment.score;
+      const isBetter =
+        score > bestMatchScore ||
+        (score === bestMatchScore && bestAssessment && assessment.timeDiffMinutes < bestAssessment.timeDiffMinutes);
 
-      if (pdfClass.normalizedClassName === csvClass.normalizedClassName) score += 30;
-      else tempDiffs.className = true;
-
-      if (pdfClass.normalizedTrainer === csvClass.normalizedTrainer) score += 20;
-      else tempDiffs.trainer = true;
-
-      if (pdfClass.normalizedLocation && csvClass.normalizedLocation) {
-        if (pdfClass.normalizedLocation === csvClass.normalizedLocation) score += 10;
-        else tempDiffs.location = true;
-      }
-
-      if (score > bestMatchScore) {
+      if (isBetter) {
         bestMatchScore = score;
         bestMatch = csvClass;
-        differences = tempDiffs;
+        bestAssessment = assessment;
+        differences = {
+          time: assessment.timeMismatch || undefined,
+          className: assessment.classMismatch || undefined,
+          trainer: assessment.trainerMismatch || undefined,
+          location: assessment.locationMismatch || undefined,
+        };
       }
     }
 
-    if (bestMatch && bestMatchScore >= 70) {
+    if (bestMatch && bestMatchScore >= 62) {
       matchedCsvIds.add(bestMatch.id);
       const hasDifferences = Object.values(differences).some(v => v);
       const status: ComparedClass['status'] = hasDifferences ? 'mismatch' : 'match';
@@ -391,3 +404,8 @@ export function compareSchedules(
     },
   };
 }
+
+// Backward-compatible aliases used by older Momence utilities.
+export const normalizeTrainerName = normalizeTrainer;
+export const normalizeLocationName = (location: string): string => normalizeLocation(location) || '';
+export const normalizeTimeString = normalizeTime;

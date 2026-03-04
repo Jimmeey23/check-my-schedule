@@ -1,28 +1,57 @@
 import type { WeekSchedule, DaySchedule, ScheduleClass, ClassLevel } from '@/types/schedule';
-import { normalizeTime, normalizeTrainer, normalizeLocation, normalizeClassName, normalizeDay } from './normalizers';
+import { normalizeTime, normalizeTrainer, normalizeLocation, normalizeClassName } from './normalizers';
 import { shouldExcludeClass } from './csvParser';
 
 /**
- * Parse a grid-style schedule CSV where:
- * - Row 1: empty/title
- * - Row 2: dates per day block
- * - Row 3: day names
- * - Row 4+: time slots with class data
- * - Each day = 6 columns: Location, Class, Trainer1, Trainer2, Cover, Theme
- * - Column A = time
+ * Grid CSV parser for spreadsheet-like schedules where day data is spread across columns.
+ * The parser intentionally avoids fixed column indexes and instead infers:
+ * - which row contains day labels
+ * - which row contains per-day subheaders (class/trainer/cover/location/theme)
+ * - where the time column is
  */
 
 interface DayBlock {
   day: string;
-  date: string;
-  startCol: number; // 0-indexed column for Location
+  date?: string;
+  startCol: number;
+  endCol: number;
+  classCol?: number;
+  trainerCol?: number;
+  trainer2Col?: number;
+  coverCol?: number;
+  locationCol?: number;
+  themeCol?: number;
+}
+
+interface GridLayout {
+  dayBlocks: DayBlock[];
+  dayRowIndex: number;
+  headerRowIndex: number;
+  timeCol: number;
 }
 
 const DAYS_IN_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
-/**
- * Parse CSV line handling quotes
- */
+const DAY_PATTERNS: Array<{ day: string; regex: RegExp }> = [
+  { day: 'Monday', regex: /\bmon(day)?\b/i },
+  { day: 'Tuesday', regex: /\btue(s|sday)?\b/i },
+  { day: 'Wednesday', regex: /\bwed(nesday)?\b/i },
+  { day: 'Thursday', regex: /\bthu(r|rs|rsday)?\b/i },
+  { day: 'Friday', regex: /\bfri(day)?\b/i },
+  { day: 'Saturday', regex: /\bsat(urday)?\b/i },
+  { day: 'Sunday', regex: /\bsun(day)?\b/i },
+];
+
+const HEADER_TOKENS = {
+  className: ['class', 'session', 'workout', 'format', 'type'],
+  trainer: ['trainer', 'instructor', 'teacher', 'coach', 'trainer1', 'trainer 1'],
+  trainer2: ['trainer2', 'trainer 2', 'assistant', 'alt trainer'],
+  cover: ['cover', 'substitute', 'sub', 'replacement', 'cover trainer', 'sub trainer'],
+  location: ['location', 'studio', 'room', 'venue', 'place'],
+  theme: ['theme', 'focus', 'notes', 'note'],
+  time: ['time', 'start time', 'class time'],
+};
+
 function parseCSVLine(line: string): string[] {
   const result: string[] = [];
   let current = '';
@@ -30,106 +59,238 @@ function parseCSVLine(line: string): string[] {
 
   for (let i = 0; i < line.length; i++) {
     const char = line[i];
+
     if (char === '"') {
-      inQuotes = !inQuotes;
-    } else if (char === ',' && !inQuotes) {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
       result.push(current.trim());
       current = '';
-    } else {
-      current += char;
+      continue;
     }
+
+    current += char;
   }
+
   result.push(current.trim());
   return result;
 }
 
-/**
- * Parse the full CSV into a 2D array
- */
 function parseToGrid(csvString: string): string[][] {
-  return csvString.trim().split('\n').map(line => parseCSVLine(line));
+  return csvString
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map(line => parseCSVLine(line))
+    .filter(row => row.some(cell => cell.trim() !== ''));
 }
 
-/**
- * Detect day blocks by scanning the date row and day name row
- * Updated for 6-column format: Location, Class, Trainer1, Trainer2, Cover, Theme
- */
-function detectDayBlocks(grid: string[][]): DayBlock[] {
-  if (grid.length < 3) return [];
+function toTokenText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
-  const dateRow = grid[0]; // Row 1 (0-indexed: 0) - dates are in the first row
-  const dayRow = grid[1];  // Row 2 (0-indexed: 1) - day names are in the second row
+function resolveDayName(value: string): string | null {
+  const text = toTokenText(value);
+  if (!text) return null;
+
+  for (const { day, regex } of DAY_PATTERNS) {
+    if (regex.test(text)) return day;
+  }
+
+  return null;
+}
+
+function isStandaloneDayCell(value: string): boolean {
+  const text = toTokenText(value);
+  if (!text) return false;
+
+  const blockedTokens = ['cover', 'class', 'trainer', 'instructor', 'location', 'theme', 'time'];
+  if (blockedTokens.some(token => text.includes(token))) return false;
+
+  const tokenCount = text.split(' ').filter(Boolean).length;
+  return tokenCount <= 2;
+}
+
+function isHeaderMatch(value: string, tokens: string[]): boolean {
+  const text = toTokenText(value);
+  if (!text) return false;
+  return tokens.some(token => text === token || text.includes(token));
+}
+
+function detectDayRowIndex(grid: string[][]): number {
+  let bestIndex = -1;
+  let bestCount = 0;
+  const maxScanRows = Math.min(grid.length, 10);
+
+  for (let rowIdx = 0; rowIdx < maxScanRows; rowIdx++) {
+    const row = grid[rowIdx];
+    const dayHits = row
+      .map(cell => (isStandaloneDayCell(cell) ? resolveDayName(cell) : null))
+      .filter(Boolean);
+
+    const uniqueDayHits = new Set(dayHits);
+    if (uniqueDayHits.size > bestCount) {
+      bestCount = uniqueDayHits.size;
+      bestIndex = rowIdx;
+    }
+  }
+
+  return bestCount >= 2 ? bestIndex : -1;
+}
+
+function detectHeaderRowIndex(grid: string[][], dayRowIndex: number): number {
+  const candidateStart = Math.max(dayRowIndex + 1, 0);
+  const candidateEnd = Math.min(grid.length - 1, dayRowIndex + 4);
+
+  let bestIndex = candidateStart;
+  let bestScore = -1;
+
+  for (let rowIdx = candidateStart; rowIdx <= candidateEnd; rowIdx++) {
+    const row = grid[rowIdx];
+    let score = 0;
+
+    for (const cell of row) {
+      if (isHeaderMatch(cell, HEADER_TOKENS.className)) score += 3;
+      if (isHeaderMatch(cell, HEADER_TOKENS.trainer)) score += 2;
+      if (isHeaderMatch(cell, HEADER_TOKENS.cover)) score += 2;
+      if (isHeaderMatch(cell, HEADER_TOKENS.location)) score += 1;
+      if (isHeaderMatch(cell, HEADER_TOKENS.theme)) score += 1;
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestIndex = rowIdx;
+    }
+  }
+
+  return bestIndex;
+}
+
+function detectTimeColumn(grid: string[][], headerRowIndex: number, dayBlocks: DayBlock[]): number {
+  const headerRow = grid[headerRowIndex] || [];
+  const firstDayStart = Math.min(...dayBlocks.map(block => block.startCol));
+
+  for (let col = 0; col < Math.max(1, firstDayStart); col++) {
+    if (isHeaderMatch(headerRow[col] || '', HEADER_TOKENS.time)) {
+      return col;
+    }
+  }
+
+  const maxCol = Math.max(...grid.map(row => row.length), 0);
+  let bestCol = 0;
+  let bestTimeHits = -1;
+
+  for (let col = 0; col < maxCol; col++) {
+    let timeHits = 0;
+    for (let rowIdx = headerRowIndex + 1; rowIdx < Math.min(grid.length, headerRowIndex + 24); rowIdx++) {
+      const cell = grid[rowIdx]?.[col]?.trim() || '';
+      if (!cell) continue;
+      if (normalizeTime(cell)) timeHits++;
+    }
+
+    if (timeHits > bestTimeHits) {
+      bestTimeHits = timeHits;
+      bestCol = col;
+    }
+  }
+
+  return bestCol;
+}
+
+function detectDayBlocks(grid: string[][], dayRowIndex: number, headerRowIndex: number): DayBlock[] {
+  const dayRow = grid[dayRowIndex] || [];
+  const headerRow = grid[headerRowIndex] || [];
+  const dateRow = dayRowIndex > 0 ? grid[dayRowIndex - 1] || [] : [];
+
+  const dayStarts: Array<{ day: string; col: number }> = [];
+
+  for (let col = 0; col < dayRow.length; col++) {
+    const cell = dayRow[col] || '';
+    const day = isStandaloneDayCell(cell) ? resolveDayName(cell) : null;
+    if (!day) continue;
+
+    const alreadyRecorded = dayStarts.some(existing => existing.day === day && Math.abs(existing.col - col) <= 1);
+    if (!alreadyRecorded) {
+      dayStarts.push({ day, col });
+    }
+  }
+
+  dayStarts.sort((a, b) => a.col - b.col);
+
   const blocks: DayBlock[] = [];
 
-  // Strategy 1: Find date cells (non-empty cells in row 1, skipping col A)
-  // Each day starts at columns: 1, 7, 13, 19, 25, 31, 37 (pattern: 1 + dayIndex * 6)
-  const expectedColumns = [1, 7, 13, 19, 25, 31, 37]; // Monday through Sunday
-  
-  for (let i = 0; i < expectedColumns.length && i < DAYS_IN_ORDER.length; i++) {
-    const col = expectedColumns[i];
-    if (col >= dateRow.length) break;
-    
-    const cell = dateRow[col];
-    if (cell && cell.trim()) {
-      // Check if it looks like a date (flexible patterns)
-      const isDate = /\d{1,2}[\s\-\/]\w+/.test(cell.trim()) || 
-                     /\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/.test(cell.trim()) ||
-                     /\w+[\s\-]\d{1,2}/.test(cell.trim());
-      
-      if (isDate) {
-        const dayName = DAYS_IN_ORDER[i];
-        blocks.push({
-          day: dayName,
-          date: cell.trim(),
-          startCol: col,
-        });
-      }
-    }
-  }
+  for (let i = 0; i < dayStarts.length; i++) {
+    const current = dayStarts[i];
+    const next = dayStarts[i + 1];
+    const startCol = current.col;
+    const endCol = next ? next.col - 1 : Math.max(headerRow.length - 1, startCol);
 
-  // Strategy 2 fallback: scan day name row directly at expected positions
-  if (blocks.length === 0) {
-    for (let i = 0; i < expectedColumns.length && i < DAYS_IN_ORDER.length; i++) {
-      const col = expectedColumns[i];
-      if (col >= dayRow.length) break;
-      
-      const cell = dayRow[col]?.trim().toLowerCase();
-      const expectedDay = DAYS_IN_ORDER[i];
-      if (cell && expectedDay.toLowerCase().includes(cell) || cell.includes(expectedDay.toLowerCase())) {
-        blocks.push({
-          day: expectedDay,
-          date: dateRow[col]?.trim() || '',
-          startCol: col,
-        });
-      }
-    }
-  }
+    const block: DayBlock = {
+      day: current.day,
+      date: dateRow[startCol]?.trim() || undefined,
+      startCol,
+      endCol,
+    };
 
-  // Strategy 3: If still no blocks, try scanning all columns for day names
-  if (blocks.length === 0) {
-    for (let col = 1; col < Math.min(dayRow.length, 50); col++) {
-      const cell = dayRow[col]?.trim().toLowerCase();
-      const matchedDay = DAYS_IN_ORDER.find(d => d.toLowerCase() === cell);
-      if (matchedDay) {
-        blocks.push({
-          day: matchedDay,
-          date: dateRow[col]?.trim() || '',
-          startCol: col,
-        });
-      }
+    for (let col = startCol; col <= endCol; col++) {
+      const headerText = headerRow[col] || '';
+      if (!block.classCol && isHeaderMatch(headerText, HEADER_TOKENS.className)) block.classCol = col;
+      if (!block.trainerCol && isHeaderMatch(headerText, HEADER_TOKENS.trainer)) block.trainerCol = col;
+      if (!block.trainer2Col && isHeaderMatch(headerText, HEADER_TOKENS.trainer2)) block.trainer2Col = col;
+      if (!block.coverCol && isHeaderMatch(headerText, HEADER_TOKENS.cover)) block.coverCol = col;
+      if (!block.locationCol && isHeaderMatch(headerText, HEADER_TOKENS.location)) block.locationCol = col;
+      if (!block.themeCol && isHeaderMatch(headerText, HEADER_TOKENS.theme)) block.themeCol = col;
     }
+
+    // Fallbacks for layouts without clear subheaders
+    if (block.classCol === undefined && startCol <= endCol) {
+      block.classCol = Math.min(startCol + 1, endCol);
+    }
+    if (block.trainerCol === undefined && startCol <= endCol) {
+      block.trainerCol = Math.min(startCol + 2, endCol);
+    }
+    if (block.coverCol === undefined && startCol <= endCol) {
+      block.coverCol = Math.min(startCol + 4, endCol);
+    }
+    if (block.locationCol === undefined && startCol <= endCol) {
+      block.locationCol = startCol;
+    }
+
+    blocks.push(block);
   }
 
   return blocks;
 }
 
-/**
- * Parse a date string like "9 Feb 2026" into components
- */
-function parseDateString(dateStr: string): { day: number; month: string; year: number } | null {
-  const match = dateStr.match(/(\d{1,2})\s+(\w+)\s+(\d{4})/);
-  if (!match) return null;
-  return { day: parseInt(match[1]), month: match[2], year: parseInt(match[3]) };
+function inferGridLayout(grid: string[][]): GridLayout | null {
+  if (grid.length < 4) return null;
+
+  const dayRowIndex = detectDayRowIndex(grid);
+  if (dayRowIndex === -1) return null;
+
+  const headerRowIndex = detectHeaderRowIndex(grid, dayRowIndex);
+  const dayBlocks = detectDayBlocks(grid, dayRowIndex, headerRowIndex);
+  if (dayBlocks.length < 2) return null;
+
+  const timeCol = detectTimeColumn(grid, headerRowIndex, dayBlocks);
+
+  return {
+    dayBlocks,
+    dayRowIndex,
+    headerRowIndex,
+    timeCol,
+  };
 }
 
 /**
@@ -152,29 +313,24 @@ function determineLevel(className: string): ClassLevel | undefined {
 }
 
 /**
- * Check if this CSV looks like a grid-style schedule
+ * Check if this CSV looks like a grid-style schedule.
  */
 export function isGridStyleCSV(csvString: string): boolean {
   const grid = parseToGrid(csvString);
   if (grid.length < 4) return false;
 
-  const blocks = detectDayBlocks(grid);
-  if (blocks.length < 2) return false;
+  const layout = inferGridLayout(grid);
+  if (!layout) return false;
 
-  // Check if column A has time-like values starting from row 3 (0-indexed: 2)
-  let timeCount = 0;
-  for (let row = 3; row < Math.min(grid.length, 15); row++) {
-    const cell = grid[row]?.[0]?.trim();
-    // Check for time patterns including comma-separated times like "7,15 PM"
-    // Also check if normalizeTimeString can parse it
-    if (cell) {
-      const hasTimePattern = /\d{1,2}[:.,:;]\d{2}/.test(cell) || /\d{1,2}\s*(AM|PM)/i.test(cell);
-      const normalizedTime = hasTimePattern ? normalizeTime(cell) : '';
-      if (normalizedTime) timeCount++;
+  let timeHits = 0;
+  for (let rowIdx = layout.headerRowIndex + 1; rowIdx < Math.min(grid.length, layout.headerRowIndex + 20); rowIdx++) {
+    const rawTime = grid[rowIdx]?.[layout.timeCol] || '';
+    if (normalizeTime(rawTime)) {
+      timeHits++;
     }
   }
 
-  return timeCount >= 3;
+  return timeHits >= 1;
 }
 
 /**
@@ -185,59 +341,45 @@ export function parseGridCSV(csvString: string): WeekSchedule | null {
     const grid = parseToGrid(csvString);
     if (grid.length < 4) return null;
 
-    const dayBlocks = detectDayBlocks(grid);
-    if (dayBlocks.length === 0) return null;
+    const layout = inferGridLayout(grid);
+    if (!layout || layout.dayBlocks.length === 0) return null;
 
     const daySchedules: Map<string, ScheduleClass[]> = new Map();
     let classIndex = 0;
 
-    // Iterate through data rows (row 3+, 0-indexed: 2+) 
-    // Row structure: 0=dates, 1=days, 2=headers, 3+=data
-    for (let rowIdx = 3; rowIdx < grid.length; rowIdx++) {
-      const row = grid[rowIdx];
-      const rawTime = row[0]?.trim();
-
-      // Skip rows without a time value
+    for (let rowIdx = layout.headerRowIndex + 1; rowIdx < grid.length; rowIdx++) {
+      const row = grid[rowIdx] || [];
+      const rawTime = row[layout.timeCol]?.trim() || '';
       if (!rawTime) continue;
-      
-      // Normalize time to handle special characters like commas
+
       const time = normalizeTime(rawTime);
-      
-      // Skip if normalization failed
       if (!time) continue;
 
-      // For each day block, extract class data
-      for (const block of dayBlocks) {
-        const col = block.startCol;
-        const rawLocation = row[col]?.trim() || '';
-        const rawClassName = row[col + 1]?.trim() || '';
-        const rawTrainer1 = row[col + 2]?.trim() || '';
-        const rawTrainer2 = row[col + 3]?.trim() || '';
-        const rawCover = row[col + 4]?.trim() || '';
-        const rawTheme = row[col + 5]?.trim() || '';
+      for (const block of layout.dayBlocks) {
+        const rawClassName = block.classCol !== undefined ? (row[block.classCol] || '').trim() : '';
+        const rawTrainer1 = block.trainerCol !== undefined ? (row[block.trainerCol] || '').trim() : '';
+        const rawTrainer2 = block.trainer2Col !== undefined ? (row[block.trainer2Col] || '').trim() : '';
+        const rawCover = block.coverCol !== undefined ? (row[block.coverCol] || '').trim() : '';
+        const rawLocation = block.locationCol !== undefined ? (row[block.locationCol] || '').trim() : '';
+        const rawTheme = block.themeCol !== undefined ? (row[block.themeCol] || '').trim() : '';
 
-        // Skip if no class data
-        if (!rawClassName && !rawTrainer1) continue;
+        if (!rawClassName && !rawTrainer1 && !rawCover && !rawTrainer2) continue;
 
-        // Check if class should be excluded
-        if (shouldExcludeClass(rawTrainer1, rawCover)) {
+        if (shouldExcludeClass(rawTrainer1 || rawTrainer2, rawCover)) {
           continue;
         }
 
-        // Skip classes with "hosted" in the name (case-insensitive)
-        if (rawClassName && rawClassName.toLowerCase().includes('hosted')) {
+        if (rawClassName.toLowerCase().includes('hosted')) {
           continue;
         }
 
-        // Apply normalization
+        const className = normalizeClassName(rawClassName || 'Unknown');
         const location = rawLocation ? normalizeLocation(rawLocation) : undefined;
-        const className = normalizeClassName(rawClassName);
-        const trainer1 = normalizeTrainer(rawTrainer1);
-        const cover = (rawCover && rawCover.trim() !== '') ? normalizeTrainer(rawCover) : '';
-        const theme = rawTheme || undefined;
-        
-        // Apply cover logic: if cover is present and non-empty, use cover as the trainer
-        const effectiveTrainer = cover ? cover : trainer1;
+        const trainerPrimary = normalizeTrainer(rawTrainer1 || rawTrainer2);
+        const coverTrainer = rawCover ? normalizeTrainer(rawCover) : '';
+        const effectiveTrainer = coverTrainer || trainerPrimary;
+
+        if (!effectiveTrainer) continue;
 
         if (!daySchedules.has(block.day)) {
           daySchedules.set(block.day, []);
@@ -246,38 +388,34 @@ export function parseGridCSV(csvString: string): WeekSchedule | null {
         daySchedules.get(block.day)!.push({
           id: `grid-${classIndex++}`,
           time,
-          className: className || 'Unknown',
+          className,
           trainer: effectiveTrainer,
           location: location || undefined,
           level: determineLevel(className),
-          theme,
+          theme: rawTheme || undefined,
         });
       }
     }
 
-    // Build DaySchedule array in order
     const days: DaySchedule[] = [];
     for (const dayName of DAYS_IN_ORDER) {
       const classes = daySchedules.get(dayName);
-      if (classes && classes.length > 0) {
-        // Find date for this day
-        const block = dayBlocks.find(b => b.day === dayName);
-        days.push({
-          day: dayName,
-          date: block?.date,
-          classes: classes.sort((a, b) => {
-            const tA = a.time.replace(/[^0-9:]/g, '');
-            const tB = b.time.replace(/[^0-9:]/g, '');
-            return tA.localeCompare(tB);
-          }),
-        });
-      }
+      if (!classes || classes.length === 0) continue;
+
+      const block = layout.dayBlocks.find(item => item.day === dayName);
+
+      classes.sort((a, b) => a.time.localeCompare(b.time));
+      days.push({
+        day: dayName,
+        date: block?.date,
+        classes,
+      });
     }
 
-    // Determine week start/end from dates
-    const dates = dayBlocks.map(b => b.date).filter(Boolean);
-    const weekStart = dates[0] || '';
-    const weekEnd = dates[dates.length - 1] || '';
+    if (days.length === 0) return null;
+
+    const weekStart = days[0]?.date || '';
+    const weekEnd = days[days.length - 1]?.date || '';
 
     return {
       id: crypto.randomUUID(),

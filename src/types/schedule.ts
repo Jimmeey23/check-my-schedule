@@ -90,6 +90,7 @@ export interface ComparisonResult {
   discrepancies: {
     classMismatch?: boolean;
     trainerMismatch?: boolean;
+    timeMismatch?: boolean;
     csvMissing?: boolean;
     pdfMissing?: boolean;
   };
@@ -141,4 +142,3 @@ export interface ScheduleComparisonResult {
   csvClasses: ComparedClass[];
   summary: ScheduleComparisonSummary;
 }
-

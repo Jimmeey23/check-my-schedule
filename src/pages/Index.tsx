@@ -4,7 +4,6 @@ import { FileUploadZone } from '@/components/FileUploadZone';
 import { ScheduleViewer } from '@/components/ScheduleViewer';
 import { ComparisonView } from '@/components/ComparisonView';
 import { SideBySideViewer } from '@/components/SideBySideViewer';
-import { ComparisonViewer } from '@/components/ComparisonViewer';
 import { MomenceTab } from '@/components/MomenceTab';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -151,8 +150,8 @@ const Index = () => {
         const schedule = await parsePDF(file);
         const location = schedule.location;
 
-        // Parse PDF to ClassData format
-        const pdfData = await parsePDFToClassData(file);
+        // Parse PDF to ClassData format (reuse parsed schedule to avoid re-parsing file)
+        const pdfData = await parsePDFToClassData(file, schedule);
         
         // Accumulate PDF data by location
         setPdfClassDataByLocation(prev => {
@@ -368,16 +367,6 @@ const Index = () => {
                 <SideBySideViewer csvData={csvClassData} pdfData={aggregatedPdfClassData} />
               ) : (
                 <div className="text-center py-16 text-slate-500">Upload both CSV and PDF files to use the side-by-side viewer</div>
-              )}
-            </div>
-          </TabsContent>
-
-          <TabsContent value="comparison-detail" className="animate-fade-in">
-            <div className="surface-card gradient-border-top p-4">
-              {csvClassData && aggregatedPdfClassData ? (
-                <ComparisonViewer csvData={csvClassData} pdfData={aggregatedPdfClassData} />
-              ) : (
-                <div className="text-center py-16 text-slate-500">Upload both CSV and PDF files to use the comparison viewer</div>
               )}
             </div>
           </TabsContent>

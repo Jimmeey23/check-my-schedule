@@ -9,9 +9,14 @@ body {
   color: hsl(var(--foreground));
 }
 
-/* Smooth transitions */
-* {
-  transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+/* Apply transitions to interactive elements only for better rendering performance */
+button,
+input,
+select,
+textarea,
+a,
+[role="button"] {
+  transition: background-color 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.2s;
 }
 
 /* Modern smooth scrollbar */

@@ -77,6 +77,8 @@ export const locationMappings: {[key: string]: string} = {
   'bandra': 'Supreme HQ, Bandra',
   'kenkere': 'Kenkere House',
   'south united': 'South United Football Club',
+  'wellingdon': 'The Wellingdon Club',
+  'courtside': 'Courtside',
   'copper cloves': 'The Studio by Copper + Cloves',
   'wework galaxy': 'WeWork Galaxy',
   'wework prestige': 'WeWork Prestige Central',

@@ -128,6 +128,8 @@ function detectLocation(items: TextItem[]): string {
     'ANNEX': 'Kenkere House',
     'WILLINGDON': 'South United Football Club',
     'SOUTH UNITED': 'South United Football Club',
+    'WELLINGDON': 'The Wellingdon Club',
+    'COURTSIDE': 'Courtside',
     'COPPER': 'The Studio by Copper + Cloves',
     'WEWORK GALAXY': 'WeWork Galaxy',
     'WEWORK PRESTIGE': 'WeWork Prestige Central',

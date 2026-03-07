@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { Header } from '@/components/Header';
 import { FileUploadZone } from '@/components/FileUploadZone';
 import { ScheduleViewer } from '@/components/ScheduleViewer';
@@ -17,6 +17,9 @@ import { readCSVFile } from '@/lib/csvParser';
 import { parsePDF, parsePDFToClassData } from '@/lib/pdfParser';
 import { normalizeSchedule, compareSchedules, normalizeLocation } from '@/lib/normalizers';
 import type { UploadedFile, WeekSchedule, ScheduleComparisonResult, NormalizedClass, ClassData, PdfClassData } from '@/types/schedule';
+import { invokeMomenceFunction } from '@/lib/supabaseClient';
+import { type MomenceClassData } from '@/types/momence';
+import { parseMomenceSessions } from '@/components/MomenceTab';
 
 const Index = () => {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
@@ -24,7 +27,10 @@ const Index = () => {
   const [csvSchedule, setCsvSchedule] = useState<WeekSchedule | null>(null);
   const [csvClassData, setCsvClassData] = useState<{[day: string]: ClassData[]} | null>(null);
   const [pdfClassDataByLocation, setPdfClassDataByLocation] = useState<Map<string, PdfClassData[]>>(new Map());
-  const [activeTab, setActiveTab] = useState('momence');
+  const [activeTab, setActiveTab] = useState('upload');
+  const [momenceSessions, setMomenceSessions] = useState<MomenceClassData[]>([]);
+  const [momenceLoading, setMomenceLoading] = useState(false);
+  const [momenceError, setMomenceError] = useState<string | null>(null);
   const [selectedPdfLocation, setSelectedPdfLocation] = useState<string>('all');
   const [comparisonLocation, setComparisonLocation] = useState<string>('all');
 
@@ -213,6 +219,37 @@ const Index = () => {
     setActiveTab('upload');
   }, []);
 
+  const fetchMomenceSessions = useCallback(async (startDate?: string, endDate?: string) => {
+    setMomenceLoading(true);
+    setMomenceError(null);
+    try {
+      const data = await invokeMomenceFunction(startDate, endDate);
+      if (!data) throw new Error('No data received from Momence API');
+      const payload = Array.isArray(data) ? data
+        : Array.isArray(data.payload) ? data.payload
+        : Array.isArray(data.sessions) ? data.sessions
+        : [];
+      setMomenceSessions(parseMomenceSessions(payload));
+    } catch (err) {
+      let msg = 'Failed to fetch sessions';
+      if (err instanceof Error) {
+        if (err.message.includes('Could not establish connection')) msg = 'Edge function not deployed. Run: ./deploy-momence.sh';
+        else if (err.message.includes('404') || err.message.includes('Not Found')) msg = 'Edge function not found. Deploy with: supabase functions deploy momence-sessions';
+        else if (err.message.includes('401') || err.message.includes('Unauthorized')) msg = 'Authentication failed. Check Momence credentials.';
+        else msg = err.message;
+      }
+      setMomenceError(msg);
+    } finally {
+      setMomenceLoading(false);
+    }
+  }, []);
+
+  // Fetch Momence data once on page load
+  useEffect(() => {
+    fetchMomenceSessions();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const hasPdf = pdfSchedules.size > 0;
   const hasCsv = csvSchedule !== null;
   const canCompare = hasPdf && hasCsv;
@@ -378,6 +415,10 @@ const Index = () => {
                 endDate={viewPdfSchedule?.weekEnd}
                 csvData={csvClassData}
                 pdfData={aggregatedPdfClassData}
+                sessions={momenceSessions}
+                loading={momenceLoading}
+                error={momenceError}
+                onRefresh={() => fetchMomenceSessions(viewPdfSchedule?.weekStart, viewPdfSchedule?.weekEnd)}
               />
             </div>
           </TabsContent>

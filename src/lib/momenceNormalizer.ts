@@ -1,6 +1,6 @@
-import { MomenceSession } from './momenceApi';
+import { MomenceSession } from '@/types/momence';
 import { PdfClassData } from '@/types/schedule';
-import { normalizeClassName, normalizeTrainerName, normalizeLocationName, normalizeTimeString } from './normalizers';
+import { normalizeClassName, normalizeTrainer, normalizeLocation, normalizeTime } from './normalizers';
 
 export function normalizeMomenceSession(session: MomenceSession): PdfClassData {
   const startTime = new Date(session.startsAt);
@@ -12,15 +12,18 @@ export function normalizeMomenceSession(session: MomenceSession): PdfClassData {
   const minutes = startTime.getMinutes().toString().padStart(2, '0');
   const time = `${hours}:${minutes}`;
   
-  const trainerName = `${session.teacher.firstName} ${session.teacher.lastName}`;
+  const trainerName = session.teacher
+    ? `${session.teacher.firstName} ${session.teacher.lastName}`.trim()
+    : '';
   const location = session.inPersonLocation?.name || 'Online';
   
   return {
     day,
-    time: normalizeTimeString(time),
+    time: normalizeTime(time),
     className: normalizeClassName(session.name),
-    trainer: normalizeTrainerName(trainerName),
-    location: normalizeLocationName(location),
+    trainer: normalizeTrainer(trainerName),
+    location: normalizeLocation(location),
     uniqueKey: `${day}-${time}-${session.name}-${trainerName}`,
   };
 }
+

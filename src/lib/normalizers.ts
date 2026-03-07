@@ -240,9 +240,11 @@ export function normalizeLocation(location: string | undefined): string | undefi
   }
 
   // Partial/contains match (for CSV data with partial location names)
+  // Sort keys by length descending so longer, more-specific keys win over short ones
   const lowerCleaned = cleaned.toLowerCase();
-  for (const [key, value] of Object.entries(locationMappings)) {
-    if (lowerCleaned.includes(key.toLowerCase())) return value;
+  const sortedKeys = Object.keys(locationMappings).sort((a, b) => b.length - a.length);
+  for (const key of sortedKeys) {
+    if (lowerCleaned.includes(key.toLowerCase())) return locationMappings[key];
   }
 
   return cleaned;

@@ -1,32 +1,38 @@
 export interface MomenceSession {
   id: number;
   name: string;
+  type: string;
+  description: string;
   startsAt: string;
   endsAt: string;
-  durationMin: number;
+  durationInMinutes: number;
   capacity: number;
-  bookedCount: number | null;
-  spotsLeft: number | null;
-  lateCancelled: number | null;
-  instructor: {
-    id?: number;
-    firstName?: string;
-    lastName?: string;
-    name?: string;
+  bookingCount: number;
+  teacher: {
+    id: number;
+    firstName: string;
+    lastName: string;
     pictureUrl?: string;
   } | null;
-  location: {
-    id?: number;
-    name?: string;
+  isRecurring: boolean;
+  isCancelled: boolean;
+  isInPerson: boolean;
+  isDraft: boolean;
+  inPersonLocation?: {
+    id: number;
+    name: string;
   } | null;
-  level: string | null;
-  category: string | null;
-  price: number | null;
-  description: string;
-  isCancelled?: boolean;
-  isDraft?: boolean;
-  isRecurring?: boolean;
-  isInPerson?: boolean;
+  onlineStreamUrl?: string | null;
+  onlineStreamPassword?: string | null;
+  bannerImageUrl?: string | null;
+  hostPhotoUrl?: string | null;
+  tags?: Array<{
+    id: number;
+    name: string;
+    isCustomerBadge: boolean;
+    badgeLabel: string;
+    badgeColor: string;
+  }>;
 }
 
 export interface MomenceClassData {

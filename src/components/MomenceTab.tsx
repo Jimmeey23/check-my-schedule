@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -7,7 +7,6 @@ import {
   Loader2, Calendar, Users, MapPin, Filter, X, Copy, Check
 } from 'lucide-react';
 import { normalizeClassName, normalizeTrainer, normalizeLocation, normalizeTime } from '@/lib/normalizers';
-import { invokeMomenceFunction } from '@/lib/supabaseClient';
 import { toast } from '@/hooks/use-toast';
 import { assessMatch } from '@/lib/matchingUtils';
 import type { MomenceSession, MomenceClassData } from '@/types/momence';
@@ -19,11 +18,15 @@ interface MomenceTabProps {
   endDate?: string;
   csvData?: { [day: string]: ClassData[] } | null;
   pdfData?: PdfClassData[] | null;
+  sessions: MomenceClassData[];
+  loading: boolean;
+  error: string | null;
+  onRefresh: () => void;
 }
 
 type MismatchType = 'match' | 'trainer-mismatch' | 'class-mismatch' | 'time-mismatch' | 'momence-only' | 'source-only';
 
-function parseMomenceSessions(sessions: MomenceSession[]): MomenceClassData[] {
+export function parseMomenceSessions(sessions: MomenceSession[]): MomenceClassData[] {
   const processedSessions = sessions
     .filter(s => !s.isCancelled && !s.isDraft)
     .map(session => {
@@ -39,25 +42,19 @@ function parseMomenceSessions(sessions: MomenceSession[]): MomenceClassData[] {
       // Normalize the time using the same function as CSV/PDF
       const time = normalizeTime(rawTime);
 
-      // Handle both API shapes: { instructor: { firstName, lastName } } and { teacher: { firstName, lastName } }
-      const instructorObj = (session as any).instructor ?? (session as any).teacher ?? null;
-      const trainerName = instructorObj
-        ? (instructorObj.name ||
-           `${instructorObj.firstName || ''} ${instructorObj.lastName || ''}`.trim())
+      const trainerName = session.teacher
+        ? `${session.teacher.firstName} ${session.teacher.lastName}`.trim()
         : '';
-
-      // Handle both API shapes: { location: { name } } and { inPersonLocation: { name } }
-      const locationObj = (session as any).location ?? (session as any).inPersonLocation ?? null;
 
       const normalized = {
         day,
         time,
         className: normalizeClassName(session.name),
         trainer: normalizeTrainer(trainerName),
-        location: normalizeLocation(locationObj?.name || ''),
+        location: normalizeLocation(session.inPersonLocation?.name || ''),
         uniqueKey: `${day}-${time}-${session.name}`,
         startsAt: session.startsAt,
-        bookingCount: (session as any).bookedCount ?? (session as any).bookingCount ?? 0,
+        bookingCount: session.bookingCount ?? 0,
         capacity: session.capacity,
       };
 
@@ -81,10 +78,7 @@ function parseMomenceSessions(sessions: MomenceSession[]): MomenceClassData[] {
     .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
 }
 
-export function MomenceTab({ startDate, endDate, csvData, pdfData }: MomenceTabProps) {
-  const [loading, setLoading] = useState(false);
-  const [sessions, setSessions] = useState<MomenceClassData[]>([]);
-  const [error, setError] = useState<string | null>(null);
+export function MomenceTab({ startDate, endDate, csvData, pdfData, sessions, loading, error, onRefresh }: MomenceTabProps) {
   const [compareWith, setCompareWith] = useState<'csv' | 'pdf'>('csv');
   const [filterStatus, setFilterStatus] = useState<MismatchType | 'all'>('all');
   const [groupByDay, setGroupByDay] = useState(true);
@@ -96,67 +90,7 @@ export function MomenceTab({ startDate, endDate, csvData, pdfData }: MomenceTabP
   const [showOnlyMismatches, setShowOnlyMismatches] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const fetchSessions = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      console.log('[Momence] Fetching sessions:', startDate && endDate 
-        ? { startDate, endDate } 
-        : 'default date range (next 30 days)');
-
-      // Call Supabase edge function (dates are optional)
-      const data = await invokeMomenceFunction(startDate, endDate);
-      
-      console.log('[Momence] Response received:', data);
-      
-      if (!data) {
-        throw new Error('No data received from Momence API');
-      }
-      
-      // API returns { sessions: [...] } — fall back through all known shapes
-      const payload: MomenceSession[] =
-        Array.isArray(data) ? data :
-        Array.isArray(data.payload) ? data.payload :
-        Array.isArray(data.sessions) ? data.sessions :
-        [];
-      
-      if (payload.length === 0) {
-        console.warn('[Momence] No sessions found in response');
-        setSessions([]);
-        return;
-      }
-      
-      const parsed = parseMomenceSessions(payload);
-      console.log('[Momence] Parsed sessions:', parsed.length);
-      setSessions(parsed);
-    } catch (err) {
-      console.error('[Momence] Fetch error:', err);
-      
-      // Provide more helpful error messages
-      let errorMessage = 'Failed to fetch sessions';
-      if (err instanceof Error) {
-        if (err.message.includes('Could not establish connection')) {
-          errorMessage = 'Edge function not deployed. Please run: ./deploy-momence.sh';
-        } else if (err.message.includes('404') || err.message.includes('Not Found')) {
-          errorMessage = 'Edge function not found. Deploy it with: supabase functions deploy momence-sessions';
-        } else if (err.message.includes('401') || err.message.includes('Unauthorized')) {
-          errorMessage = 'Authentication failed. Check Momence credentials in the edge function.';
-        } else {
-          errorMessage = err.message;
-        }
-      }
-      
-      setError(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  }, [startDate, endDate]);
-
-  // Auto-fetch sessions on component mount and when dates change
-  useEffect(() => {
-    fetchSessions();
-  }, [fetchSessions]);
+  // fetchSessions is handled by the parent (Index) and passed as onRefresh
 
   // Extract actual date range from CSV/PDF data
   const dataDateRange = useMemo(() => {
@@ -622,7 +556,7 @@ export function MomenceTab({ startDate, endDate, csvData, pdfData }: MomenceTabP
           )}
 
           <Button
-            onClick={fetchSessions}
+            onClick={onRefresh}
             disabled={loading}
             className="gap-2"
             size="sm"

@@ -39,19 +39,25 @@ function parseMomenceSessions(sessions: MomenceSession[]): MomenceClassData[] {
       // Normalize the time using the same function as CSV/PDF
       const time = normalizeTime(rawTime);
 
-      const trainerName = session.teacher
-        ? `${session.teacher.firstName} ${session.teacher.lastName}`.trim()
+      // Handle both API shapes: { instructor: { firstName, lastName } } and { teacher: { firstName, lastName } }
+      const instructorObj = (session as any).instructor ?? (session as any).teacher ?? null;
+      const trainerName = instructorObj
+        ? (instructorObj.name ||
+           `${instructorObj.firstName || ''} ${instructorObj.lastName || ''}`.trim())
         : '';
+
+      // Handle both API shapes: { location: { name } } and { inPersonLocation: { name } }
+      const locationObj = (session as any).location ?? (session as any).inPersonLocation ?? null;
 
       const normalized = {
         day,
         time,
         className: normalizeClassName(session.name),
         trainer: normalizeTrainer(trainerName),
-        location: normalizeLocation(session.inPersonLocation?.name || ''),
+        location: normalizeLocation(locationObj?.name || ''),
         uniqueKey: `${day}-${time}-${session.name}`,
         startsAt: session.startsAt,
-        bookingCount: session.bookingCount,
+        bookingCount: (session as any).bookedCount ?? (session as any).bookingCount ?? 0,
         capacity: session.capacity,
       };
 
@@ -108,9 +114,14 @@ export function MomenceTab({ startDate, endDate, csvData, pdfData }: MomenceTabP
         throw new Error('No data received from Momence API');
       }
       
-      const payload = data.payload || data;
+      // API returns { sessions: [...] } — fall back through all known shapes
+      const payload: MomenceSession[] =
+        Array.isArray(data) ? data :
+        Array.isArray(data.payload) ? data.payload :
+        Array.isArray(data.sessions) ? data.sessions :
+        [];
       
-      if (!Array.isArray(payload) && !payload.length) {
+      if (payload.length === 0) {
         console.warn('[Momence] No sessions found in response');
         setSessions([]);
         return;

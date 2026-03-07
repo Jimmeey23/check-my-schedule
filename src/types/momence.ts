@@ -3,23 +3,30 @@ export interface MomenceSession {
   name: string;
   startsAt: string;
   endsAt: string;
-  durationInMinutes: number;
+  durationMin: number;
   capacity: number;
-  bookingCount: number;
-  teacher: {
-    id: number;
-    firstName: string;
-    lastName: string;
+  bookedCount: number | null;
+  spotsLeft: number | null;
+  lateCancelled: number | null;
+  instructor: {
+    id?: number;
+    firstName?: string;
+    lastName?: string;
+    name?: string;
     pictureUrl?: string;
-  };
-  inPersonLocation?: {
-    id: number;
-    name: string;
-  };
-  isCancelled: boolean;
-  isRecurring: boolean;
-  isDraft: boolean;
-  isInPerson: boolean;
+  } | null;
+  location: {
+    id?: number;
+    name?: string;
+  } | null;
+  level: string | null;
+  category: string | null;
+  price: number | null;
+  description: string;
+  isCancelled?: boolean;
+  isDraft?: boolean;
+  isRecurring?: boolean;
+  isInPerson?: boolean;
 }
 
 export interface MomenceClassData {

@@ -173,6 +173,15 @@ const supabaseUrl = 'http://localhost:54321';
 - Edge function credentials may need updating
 - Check Supabase function logs: `supabase functions logs momence-sessions`
 
+### `401 Unauthorized` from `https://<project>.supabase.co/functions/v1/momence-sessions`
+- This usually means **Supabase blocked the request before your function code ran**
+- Most likely cause: the function was deployed **without** `--no-verify-jwt`
+- This project calls the function from the browser with the Supabase client and a publishable key, not a signed-in user JWT
+- Fix by redeploying:
+  - `supabase functions deploy momence-sessions --no-verify-jwt`
+- If you want the function protected instead, you must sign the user in first and invoke the function with a valid Supabase access token
+- This error is **not usually caused by Momence credentials**
+
 ### "Failed to fetch sessions"
 - Verify the edge function is deployed: `supabase functions list`
 - Check network tab in browser DevTools for error details

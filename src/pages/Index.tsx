@@ -235,7 +235,7 @@ const Index = () => {
       if (err instanceof Error) {
         if (err.message.includes('Could not establish connection')) msg = 'Edge function not deployed. Run: ./deploy-momence.sh';
         else if (err.message.includes('404') || err.message.includes('Not Found')) msg = 'Edge function not found. Deploy with: supabase functions deploy momence-sessions';
-        else if (err.message.includes('401') || err.message.includes('Unauthorized')) msg = 'Authentication failed. Check Momence credentials.';
+        else if (err.message.includes('401') || err.message.includes('Unauthorized')) msg = 'Supabase blocked the edge function request (401 Unauthorized). Redeploy momence-sessions with --no-verify-jwt or invoke it with a valid Supabase user JWT.';
         else msg = err.message;
       }
       setMomenceError(msg);

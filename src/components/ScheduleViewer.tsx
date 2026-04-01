@@ -15,6 +15,9 @@ import { normalizeClassName, normalizeTrainer, normalizeLocation, getClassLevel 
 interface ScheduleViewerProps {
   schedule: WeekSchedule;
   title?: string;
+  locationFilter?: string;
+  defaultViewMode?: ScheduleViewMode;
+  groupListByDay?: boolean;
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -27,12 +30,13 @@ const viewModes: { id: ScheduleViewMode; label: string; icon: typeof LayoutGrid 
   { id: 'location', label: 'By Location', icon: Building2 },
 ];
 
-function getFilteredClasses(schedule: WeekSchedule, filters: ScheduleFilters): { day: string; cls: ScheduleClass }[] {
+function getFilteredClasses(schedule: WeekSchedule, filters: ScheduleFilters, locationFilter = 'all'): { day: string; cls: ScheduleClass }[] {
   const all: { day: string; cls: ScheduleClass }[] = [];
   for (const day of schedule.days) {
     for (const cls of day.classes) {
       if (filters.day && day.day !== filters.day) continue;
       if (filters.trainer && normalizeTrainer(cls.trainer) !== filters.trainer) continue;
+      if (locationFilter !== 'all' && normalizeLocation(cls.location) !== locationFilter) continue;
       if (filters.location && normalizeLocation(cls.location) !== filters.location) continue;
       if (filters.className && normalizeClassName(cls.className) !== filters.className) continue;
       if (filters.level) {
@@ -82,10 +86,11 @@ function StatsBar({ schedule, filtered }: { schedule: WeekSchedule; filtered: { 
   );
 }
 
-function FilterBar({ schedule, filters, setFilters }: {
+function FilterBar({ schedule, filters, setFilters, locationFilter = 'all' }: {
   schedule: WeekSchedule;
   filters: ScheduleFilters;
   setFilters: (f: ScheduleFilters) => void;
+  locationFilter?: string;
 }) {
   const allClasses = useMemo(() => {
     const set = new Set<string>();
@@ -151,7 +156,7 @@ function FilterBar({ schedule, filters, setFilters }: {
         </Select>
         {allLocations.length > 1 && (
           <Select value={filters.location || 'all'} onValueChange={v => setFilters({ ...filters, location: v === 'all' ? null : v })}>
-            <SelectTrigger className="w-[180px] h-10 bg-white/70 backdrop-blur-sm border-border/70 shadow-soft"><SelectValue placeholder="Location" /></SelectTrigger>
+            <SelectTrigger className="w-[180px] h-10 bg-white/70 backdrop-blur-sm border-border/70 shadow-soft" disabled={locationFilter !== 'all'}><SelectValue placeholder="Location" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Locations</SelectItem>
               {allLocations.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
@@ -257,9 +262,9 @@ function GridView({ filtered }: { filtered: { day: string; cls: ScheduleClass }[
       <table className="table-premium text-sm">
         <thead>
           <tr className="border-b bg-secondary/50">
-            <th className="p-2 text-left font-medium text-muted-foreground w-24 sticky left-0 bg-secondary/50">Time</th>
+            <th className="sticky top-0 z-20 p-2 text-left font-medium text-muted-foreground w-24 sticky left-0 bg-white">Time</th>
             {activeDays.map(d => (
-              <th key={d} className="p-2 text-left font-medium text-muted-foreground min-w-[150px]">{d.slice(0, 3)}</th>
+              <th key={d} className="sticky top-0 z-10 p-2 text-left font-medium text-muted-foreground min-w-[150px] bg-white">{d.slice(0, 3)}</th>
             ))}
           </tr>
         </thead>
@@ -297,22 +302,55 @@ function GridView({ filtered }: { filtered: { day: string; cls: ScheduleClass }[
   );
 }
 
-function ListView({ filtered }: { filtered: { day: string; cls: ScheduleClass }[] }) {
+function ListView({ filtered, groupByDay }: { filtered: { day: string; cls: ScheduleClass }[]; groupByDay: boolean }) {
+  const grouped = useMemo(() => {
+    const map = new Map<string, ScheduleClass[]>();
+    filtered.forEach(({ day, cls }) => {
+      const bucket = map.get(day) || [];
+      bucket.push(cls);
+      map.set(day, bucket);
+    });
+
+    return DAYS.filter(day => map.has(day)).map(day => ({ day, classes: map.get(day) || [] }));
+  }, [filtered]);
+
   return (
     <div className="overflow-x-auto">
       <table className="table-premium text-sm">
         <thead>
           <tr className="border-b bg-secondary/50 text-left">
-            <th className="p-3 font-medium text-muted-foreground">Day</th>
-            <th className="p-3 font-medium text-muted-foreground">Time</th>
-            <th className="p-3 font-medium text-muted-foreground">Class</th>
-            <th className="p-3 font-medium text-muted-foreground">Trainer</th>
-            <th className="p-3 font-medium text-muted-foreground">Location</th>
-            <th className="p-3 font-medium text-muted-foreground">Level</th>
+            <th className="sticky top-0 z-10 bg-white p-3 font-medium text-muted-foreground">Day</th>
+            <th className="sticky top-0 z-10 bg-white p-3 font-medium text-muted-foreground">Time</th>
+            <th className="sticky top-0 z-10 bg-white p-3 font-medium text-muted-foreground">Class</th>
+            <th className="sticky top-0 z-10 bg-white p-3 font-medium text-muted-foreground">Trainer</th>
+            <th className="sticky top-0 z-10 bg-white p-3 font-medium text-muted-foreground">Location</th>
+            <th className="sticky top-0 z-10 bg-white p-3 font-medium text-muted-foreground">Level</th>
           </tr>
         </thead>
         <tbody>
-          {filtered.map(({ day, cls }) => {
+          {(groupByDay ? grouped.flatMap(({ day, classes }) => [
+            <tr key={`${day}-group`} className="border-b border-slate-200 bg-slate-50/80">
+              <td colSpan={6} className="px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                {day}
+              </td>
+            </tr>,
+            ...classes.map(cls => {
+              const normalized = normalizeClassName(cls.className);
+              const level = getClassLevel(normalized);
+              return (
+                <tr key={cls.id} className="border-b border-slate-200/70 bg-white hover:bg-slate-50 transition-colors">
+                  <td className="p-3 text-muted-foreground">{day.slice(0, 3)}</td>
+                  <td className="p-3 font-medium">{cls.time}</td>
+                  <td className="p-3 font-medium">{normalized.replace('Studio ', '')}</td>
+                  <td className="p-3">{normalizeTrainer(cls.trainer)}</td>
+                  <td className="p-3 text-muted-foreground">{normalizeLocation(cls.location) || '—'}</td>
+                  <td className="p-3">
+                    {level && <Badge variant="outline" className="text-[10px] capitalize border-slate-300 bg-slate-50 text-slate-700">{level}</Badge>}
+                  </td>
+                </tr>
+              );
+            })
+          ]) : filtered.map(({ day, cls }) => {
             const normalized = normalizeClassName(cls.className);
             const level = getClassLevel(normalized);
             return (
@@ -323,15 +361,11 @@ function ListView({ filtered }: { filtered: { day: string; cls: ScheduleClass }[
                 <td className="p-3">{normalizeTrainer(cls.trainer)}</td>
                 <td className="p-3 text-muted-foreground">{normalizeLocation(cls.location) || '—'}</td>
                 <td className="p-3">
-                  {level && <Badge variant="outline" className={cn("text-[10px] capitalize",
-                    level === 'beginner' && "border-level-beginner/30 text-level-beginner bg-level-beginner/10",
-                    level === 'intermediate' && "border-level-intermediate/30 text-level-intermediate bg-level-intermediate/10",
-                    level === 'advanced' && "border-level-advanced/30 text-level-advanced bg-level-advanced/10"
-                  )}>{level}</Badge>}
+                  {level && <Badge variant="outline" className="text-[10px] capitalize border-slate-300 bg-slate-50 text-slate-700">{level}</Badge>}
                 </td>
               </tr>
             );
-          })}
+          }))}
         </tbody>
       </table>
       {filtered.length === 0 && <p className="text-center py-8 text-muted-foreground">No classes match your filters</p>}
@@ -405,13 +439,13 @@ function LocationView({ filtered }: { filtered: { day: string; cls: ScheduleClas
 
 // ============ MAIN COMPONENT ============
 
-export function ScheduleViewer({ schedule, title }: ScheduleViewerProps) {
-  const [viewMode, setViewMode] = useState<ScheduleViewMode>('cards');
+export function ScheduleViewer({ schedule, title, locationFilter = 'all', defaultViewMode = 'cards', groupListByDay = false }: ScheduleViewerProps) {
+  const [viewMode, setViewMode] = useState<ScheduleViewMode>(defaultViewMode);
   const [filters, setFilters] = useState<ScheduleFilters>({
     day: null, className: null, trainer: null, location: null, level: null, searchQuery: ''
   });
 
-  const filtered = useMemo(() => getFilteredClasses(schedule, filters), [schedule, filters]);
+  const filtered = useMemo(() => getFilteredClasses(schedule, filters, locationFilter), [schedule, filters, locationFilter]);
 
   const totalClasses = schedule.days.reduce((sum, d) => sum + d.classes.length, 0);
   if (totalClasses === 0) {
@@ -428,10 +462,10 @@ export function ScheduleViewer({ schedule, title }: ScheduleViewerProps) {
       )}
 
       <StatsBar schedule={schedule} filtered={filtered} />
-      <FilterBar schedule={schedule} filters={filters} setFilters={setFilters} />
+      <FilterBar schedule={schedule} filters={filters} setFilters={setFilters} locationFilter={locationFilter} />
 
       {/* View Mode Selector */}
-      <div className="flex gap-1 p-1 surface-muted rounded-xl w-fit shadow-soft">
+      <div className="flex gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm w-fit">
         {viewModes.map(mode => (
           <button
             key={mode.id}
@@ -453,7 +487,7 @@ export function ScheduleViewer({ schedule, title }: ScheduleViewerProps) {
         <div className="pr-4">
           {viewMode === 'cards' && <DayCardsView schedule={schedule} filtered={filtered} />}
           {viewMode === 'grid' && <GridView filtered={filtered} />}
-          {viewMode === 'list' && <ListView filtered={filtered} />}
+          {viewMode === 'list' && <ListView filtered={filtered} groupByDay={groupListByDay} />}
           {viewMode === 'trainer' && <TrainerView filtered={filtered} />}
           {viewMode === 'location' && <LocationView filtered={filtered} />}
         </div>

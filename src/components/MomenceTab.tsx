@@ -18,6 +18,7 @@ interface MomenceTabProps {
   endDate?: string;
   csvData?: { [day: string]: ClassData[] } | null;
   pdfData?: PdfClassData[] | null;
+  locationFilter?: string;
   sessions: MomenceClassData[];
   loading: boolean;
   error: string | null;
@@ -124,7 +125,7 @@ export function parseMomenceSessions(sessions: MomenceSession[]): MomenceClassDa
     .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
 }
 
-export function MomenceTab({ startDate, endDate, csvData, pdfData, sessions, loading, error, onRefresh }: MomenceTabProps) {
+export function MomenceTab({ startDate, endDate, csvData, pdfData, locationFilter = 'all', sessions, loading, error, onRefresh }: MomenceTabProps) {
   const [compareWith, setCompareWith] = useState<'csv' | 'pdf'>('csv');
   const [filterStatus, setFilterStatus] = useState<MismatchType | 'all'>('all');
   const [groupByDay, setGroupByDay] = useState(true);
@@ -414,10 +415,12 @@ export function MomenceTab({ startDate, endDate, csvData, pdfData, sessions, loa
 
   // Filtered rows
   const filteredRows = useMemo(() => {
+    const activeLocationFilter = locationFilter !== 'all' ? locationFilter : filterLocation;
+
     return comparisonRows.filter(row =>
       rowMatchesMomenceFilters(row, {
         status: filterStatus,
-        location: filterLocation,
+        location: activeLocationFilter,
         day: filterDay,
         time: filterTime,
         className: filterClass,
@@ -425,7 +428,7 @@ export function MomenceTab({ startDate, endDate, csvData, pdfData, sessions, loa
         showOnlyMismatches,
       })
     );
-  }, [comparisonRows, filterStatus, filterLocation, filterDay, filterTime, filterClass, filterTrainer, showOnlyMismatches]);
+  }, [comparisonRows, filterStatus, filterLocation, filterDay, filterTime, filterClass, filterTrainer, locationFilter, showOnlyMismatches]);
 
   const stats = useMemo(() => {
     const s = { total: comparisonRows.length, matches: 0, mismatches: 0, momenceOnly: 0, sourceOnly: 0 };
@@ -602,19 +605,19 @@ export function MomenceTab({ startDate, endDate, csvData, pdfData, sessions, loa
             <p className="text-xl font-bold font-display text-foreground">{filteredSessions.length}</p>
             <p className="text-[10px] text-muted-foreground font-medium">Filtered Momence</p>
           </div>
-          <div className="surface-card hoverable p-3 text-center border-l-4 border-l-emerald-500/70">
+          <div className="surface-card hoverable p-3 text-center border-l-4 border-l-blue-900/80">
             <p className="text-xl font-bold font-display text-foreground">{stats.matches}</p>
             <p className="text-[10px] text-muted-foreground font-medium">Matches</p>
           </div>
-          <div className="surface-card hoverable p-3 text-center border-l-4 border-l-red-500/70">
+          <div className="surface-card hoverable p-3 text-center border-l-4 border-l-slate-500/80">
             <p className="text-xl font-bold font-display text-foreground">{stats.mismatches}</p>
             <p className="text-[10px] text-muted-foreground font-medium">Mismatches</p>
           </div>
-          <div className="surface-card hoverable p-3 text-center border-l-4 border-l-amber-500/70">
+          <div className="surface-card hoverable p-3 text-center border-l-4 border-l-slate-400/80">
             <p className="text-xl font-bold font-display text-foreground">{stats.momenceOnly}</p>
             <p className="text-[10px] text-muted-foreground font-medium">Momence Only</p>
           </div>
-          <div className="surface-card hoverable p-3 text-center border-l-4 border-l-blue-500/70">
+          <div className="surface-card hoverable p-3 text-center border-l-4 border-l-blue-700/80">
             <p className="text-xl font-bold font-display text-foreground">{stats.sourceOnly}</p>
             <p className="text-[10px] text-muted-foreground font-medium">{compareWith.toUpperCase()} Only</p>
           </div>
@@ -657,7 +660,7 @@ export function MomenceTab({ startDate, endDate, csvData, pdfData, sessions, loa
                 onClick={copyMismatchesInTableFormat}
                 className="gap-2"
               >
-                {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                {copied ? <Check className="w-4 h-4 text-blue-800" /> : <Copy className="w-4 h-4" />}
                 Copy Mismatches Table
               </Button>
             </div>
@@ -670,7 +673,7 @@ export function MomenceTab({ startDate, endDate, csvData, pdfData, sessions, loa
               <span className="text-sm font-medium text-foreground">Filter by:</span>
             </div>
             
-            <Select value={filterLocation} onValueChange={setFilterLocation}>
+            <Select value={locationFilter !== 'all' ? locationFilter : filterLocation} onValueChange={setFilterLocation} disabled={locationFilter !== 'all'}>
               <SelectTrigger className="w-40 h-8">
                 <SelectValue placeholder="Location" />
               </SelectTrigger>
@@ -807,16 +810,16 @@ export function MomenceTab({ startDate, endDate, csvData, pdfData, sessions, loa
                         const isSourceOnly = row.status === 'source-only';
 
                         const rowBg = isMatch
-                          ? 'bg-emerald-50/40 hover:bg-emerald-50/60 border-l-2 border-l-emerald-400'
+                          ? 'bg-white hover:bg-slate-50 border-l-2 border-l-transparent'
                           : (isMomenceOnly || isSourceOnly)
                             ? 'bg-slate-50 hover:bg-slate-100 border-l-2 border-l-slate-300'
-                            : 'bg-amber-50/30 hover:bg-amber-50/50 border-l-2 border-l-amber-400';
+                            : 'bg-blue-50/40 hover:bg-blue-50/70 border-l-2 border-l-blue-700';
 
                         const statusIcon = isMatch
-                          ? <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                          ? <CheckCircle2 className="w-4 h-4 text-blue-800" />
                           : (isMomenceOnly || isSourceOnly)
-                            ? <AlertTriangle className="w-4 h-4 text-amber-600" />
-                            : <XCircle className="w-4 h-4 text-red-600" />;
+                            ? <AlertTriangle className="w-4 h-4 text-slate-500" />
+                            : <XCircle className="w-4 h-4 text-blue-700" />;
 
                         return (
                           <tr key={`${day}-${idx}`} className={cn("border-b border-slate-200/70 transition-colors", rowBg)}>

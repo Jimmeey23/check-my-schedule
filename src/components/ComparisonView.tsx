@@ -49,37 +49,37 @@ const statusConfig = {
     icon: CheckCircle2,
     label: 'Match',
     text: 'text-slate-700',
-    iconText: 'text-emerald-600',
-    pillBorder: 'border-emerald-200',
+    iconText: 'text-blue-800',
+    pillBorder: 'border-slate-300',
     iconBg: 'bg-slate-50',
     iconBorder: 'border-slate-300',
   },
   mismatch: {
     icon: XCircle,
     label: 'Mismatch',
-    text: 'text-amber-900',
-    iconText: 'text-amber-700',
-    pillBorder: 'border-amber-300',
-    iconBg: 'bg-amber-50',
-    iconBorder: 'border-amber-300',
+    text: 'text-slate-800',
+    iconText: 'text-blue-700',
+    pillBorder: 'border-slate-300',
+    iconBg: 'bg-blue-50',
+    iconBorder: 'border-blue-200',
   },
   missing: {
     icon: AlertTriangle,
     label: 'Missing in CSV',
-    text: 'text-amber-900',
-    iconText: 'text-amber-700',
-    pillBorder: 'border-amber-300',
-    iconBg: 'bg-amber-50',
-    iconBorder: 'border-amber-300',
+    text: 'text-slate-800',
+    iconText: 'text-slate-500',
+    pillBorder: 'border-slate-300',
+    iconBg: 'bg-slate-50',
+    iconBorder: 'border-slate-300',
   },
   extra: {
     icon: Plus,
     label: 'Extra in CSV',
-    text: 'text-amber-900',
-    iconText: 'text-amber-700',
-    pillBorder: 'border-amber-300',
-    iconBg: 'bg-amber-50',
-    iconBorder: 'border-amber-300',
+    text: 'text-slate-800',
+    iconText: 'text-slate-500',
+    pillBorder: 'border-slate-300',
+    iconBg: 'bg-slate-50',
+    iconBorder: 'border-slate-300',
   },
 };
 
@@ -327,7 +327,7 @@ function ClassCell({ cls, compactMode }: { cls: ComparedClass | null; compactMod
       className={cn(
         'rounded-xl border shadow-soft transition-all',
         compactMode ? 'p-2.5 min-h-[64px]' : 'p-3 min-h-[80px]',
-        cls.status === 'match' ? 'border-border/70 bg-white/85' : 'border-amber-300/70 bg-amber-50/40'
+        cls.status === 'match' ? 'border-border/70 bg-white/85' : 'border-blue-200 bg-blue-50/40'
       )}
     >
       <div className="flex items-start justify-between gap-2 mb-1">
@@ -342,14 +342,14 @@ function ClassCell({ cls, compactMode }: { cls: ComparedClass | null; compactMod
         </Badge>
       </div>
 
-      <p className={cn('font-medium text-xs leading-tight', cls.differences?.className ? 'text-amber-900 font-semibold' : 'text-slate-900')}>
+      <p className={cn('font-medium text-xs leading-tight', cls.differences?.className ? 'text-blue-900 font-semibold' : 'text-slate-900')}>
         {getDisplayName(cls)}
       </p>
-      <p className={cn('text-[11px] mt-0.5', cls.differences?.trainer ? 'text-amber-900 font-semibold' : 'text-slate-600')}>
+      <p className={cn('text-[11px] mt-0.5', cls.differences?.trainer ? 'text-blue-900 font-semibold' : 'text-slate-600')}>
         {cls.normalizedTrainer || cls.trainer || '—'}
       </p>
       {cls.normalizedLocation && (
-        <p className={cn('text-[10px] mt-0.5', cls.differences?.location ? 'text-amber-900' : 'text-slate-500')}>
+        <p className={cn('text-[10px] mt-0.5', cls.differences?.location ? 'text-blue-900' : 'text-slate-500')}>
           {cls.normalizedLocation}
         </p>
       )}
@@ -357,7 +357,7 @@ function ClassCell({ cls, compactMode }: { cls: ComparedClass | null; compactMod
       {issueChips.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1">
           {issueChips.map(chip => (
-            <Badge key={chip} variant="outline" className="text-[9px] h-4 px-1.5 border-amber-300 text-amber-900 bg-amber-100/50">
+            <Badge key={chip} variant="outline" className="text-[9px] h-4 px-1.5 border-blue-200 text-blue-900 bg-blue-50">
               {chip}
             </Badge>
           ))}
@@ -367,7 +367,7 @@ function ClassCell({ cls, compactMode }: { cls: ComparedClass | null; compactMod
   );
 }
 
-export function ComparisonView({ comparison }: ComparisonViewProps) {
+export function ComparisonView({ comparison, locationFilter: sharedLocationFilter = 'all' }: ComparisonViewProps) {
   const { toast } = useToast();
   const [viewMode, setViewMode] = useState<CompViewMode>('side-by-side');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -402,6 +402,8 @@ export function ComparisonView({ comparison }: ComparisonViewProps) {
     return Array.from(set).sort();
   }, [comparison]);
 
+  const activeLocationFilter = sharedLocationFilter !== 'all' ? sharedLocationFilter : locationFilter;
+
   const { filteredPdf, filteredCsv } = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
 
@@ -409,7 +411,7 @@ export function ComparisonView({ comparison }: ComparisonViewProps) {
       if (focusIssuesOnly && cls.status === 'match') return false;
       if (statusFilter !== 'all' && cls.status !== statusFilter) return false;
       if (dayFilter !== 'all' && cls.day !== dayFilter) return false;
-      if (locationFilter !== 'all' && cls.normalizedLocation !== locationFilter) return false;
+      if (activeLocationFilter !== 'all' && cls.normalizedLocation !== activeLocationFilter) return false;
       if (!classMatchesIssueFilter(cls, issueFilter)) return false;
 
       if (query) {
@@ -438,7 +440,7 @@ export function ComparisonView({ comparison }: ComparisonViewProps) {
       filteredPdf: sortComparedClasses(comparison.pdfClasses.filter(matchesFilters), sortMode),
       filteredCsv: sortComparedClasses(comparison.csvClasses.filter(matchesFilters), sortMode),
     };
-  }, [comparison, dayFilter, focusIssuesOnly, issueFilter, locationFilter, searchQuery, sortMode, statusFilter]);
+  }, [activeLocationFilter, comparison, dayFilter, focusIssuesOnly, issueFilter, searchQuery, sortMode, statusFilter]);
 
   const alignedRows = useMemo(() => buildAlignedRows(filteredPdf, filteredCsv), [filteredPdf, filteredCsv]);
   const sortedAlignedRows = useMemo(() => sortAlignedRows(alignedRows, sortMode), [alignedRows, sortMode]);
@@ -526,8 +528,8 @@ export function ComparisonView({ comparison }: ComparisonViewProps) {
   const handleCopyWhatsAppMessage = async () => {
     setIsCopyingWhatsApp(true);
     try {
-      const studioName = locationFilter && locationFilter !== 'all' ? locationFilter : 'the studio';
-      const message = formatMismatchesAsWhatsApp(comparison, locationFilter !== 'all' ? locationFilter : null, studioName);
+      const studioName = activeLocationFilter && activeLocationFilter !== 'all' ? activeLocationFilter : 'the studio';
+      const message = formatMismatchesAsWhatsApp(comparison, activeLocationFilter !== 'all' ? activeLocationFilter : null, studioName);
       await copyToClipboard(message);
       
       toast({
@@ -562,10 +564,10 @@ export function ComparisonView({ comparison }: ComparisonViewProps) {
       <div className="grid grid-cols-3 md:grid-cols-6 gap-2 sm:gap-3">
         <StatCard label="PDF Classes" value={summary.totalPdf} icon={BarChart3} />
         <StatCard label="CSV Classes" value={summary.totalCsv} icon={BarChart3} />
-        <StatCard label="Matches" value={summary.matches} accent="border-l-emerald-500/70" icon={CheckCircle2} />
-        <StatCard label="Mismatches" value={summary.mismatches} accent="border-l-amber-500/70" icon={XCircle} />
-        <StatCard label="Missing" value={summary.missingInCsv} accent="border-l-amber-400/70" icon={AlertTriangle} />
-        <StatCard label="Extra" value={summary.extraInCsv} accent="border-l-amber-300/80" icon={Plus} />
+        <StatCard label="Matches" value={summary.matches} accent="border-l-blue-900/80" icon={CheckCircle2} />
+        <StatCard label="Mismatches" value={summary.mismatches} accent="border-l-slate-500/80" icon={XCircle} />
+        <StatCard label="Missing" value={summary.missingInCsv} accent="border-l-slate-400/80" icon={AlertTriangle} />
+        <StatCard label="Extra" value={summary.extraInCsv} accent="border-l-blue-700/80" icon={Plus} />
       </div>
 
       <div className="surface-card p-4 space-y-3">
@@ -655,7 +657,7 @@ export function ComparisonView({ comparison }: ComparisonViewProps) {
             </SelectContent>
           </Select>
 
-          <Select value={locationFilter} onValueChange={setLocationFilter}>
+          <Select value={activeLocationFilter} onValueChange={setLocationFilter} disabled={sharedLocationFilter !== 'all'}>
             <SelectTrigger className="h-10 text-xs bg-white/70 backdrop-blur-sm border-border/70 shadow-soft">
               <SelectValue placeholder="Location" />
             </SelectTrigger>
@@ -721,7 +723,7 @@ export function ComparisonView({ comparison }: ComparisonViewProps) {
         </div>
       </div>
 
-      <div className="surface-card p-3 border border-amber-200 bg-amber-50/60">
+      <div className="surface-card p-3 border border-slate-200 bg-white">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-slate-900">Mismatch Navigator</p>
@@ -729,7 +731,7 @@ export function ComparisonView({ comparison }: ComparisonViewProps) {
               {focusTargets.length} highlighted issue{focusTargets.length === 1 ? '' : 's'} in current view
             </p>
             {focusTargets.length > 0 && (
-              <p className="text-xs text-amber-900 mt-0.5">
+              <p className="text-xs text-blue-900 mt-0.5">
                 {focusTargets[activeMismatchIndex]?.day} • {focusTargets[activeMismatchIndex]?.time} • {focusTargets[activeMismatchIndex]?.className}
               </p>
             )}
@@ -739,7 +741,7 @@ export function ComparisonView({ comparison }: ComparisonViewProps) {
               size="sm"
               onClick={handleCopyWhatsAppMessage}
               disabled={summary.mismatches === 0 || isCopyingWhatsApp}
-              className="h-8 px-3 bg-green-500 hover:bg-green-600 text-white gap-1.5"
+              className="h-8 px-3 bg-blue-900 hover:bg-blue-800 text-white gap-1.5"
             >
               <MessageCircle className="w-4 h-4" />
               <span className="hidden sm:inline">Copy WhatsApp</span>
@@ -879,7 +881,7 @@ function SideBySideView({
                     data-focus-id={focusId || undefined}
                     className={cn(
                       'grid grid-cols-2 divide-x divide-border/50 transition-colors',
-                      isIssue ? 'border-l-4 border-l-amber-500 bg-amber-50/35 hover:bg-amber-50/50' : 'bg-white/40 hover:bg-white/60',
+                      isIssue ? 'border-l-4 border-l-blue-700 bg-blue-50/35 hover:bg-blue-50/50' : 'bg-white/40 hover:bg-white/60',
                       isActive && 'ring-2 ring-blue-300 ring-inset'
                     )}
                   >
@@ -910,15 +912,15 @@ function FlatListView({ rows, compactMode, activeFocusId }: { rows: AlignedRow[]
       <table className={cn('table-premium text-sm', compactMode && 'table-compact')}>
         <thead>
           <tr className="border-b bg-secondary/50 text-left text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">
-            <th className="p-2.5">Status</th>
-            <th className="p-2.5">Day</th>
-            <th className="p-2.5">Time</th>
-            <th className="p-2.5">Location</th>
-            <th className="p-2.5">PDF Class</th>
-            <th className="p-2.5">CSV Class</th>
-            <th className="p-2.5">PDF Trainer</th>
-            <th className="p-2.5">CSV Trainer</th>
-            <th className="p-2.5">Issues</th>
+            <th className="sticky top-0 z-10 bg-white p-2.5">Status</th>
+            <th className="sticky top-0 z-10 bg-white p-2.5">Day</th>
+            <th className="sticky top-0 z-10 bg-white p-2.5">Time</th>
+            <th className="sticky top-0 z-10 bg-white p-2.5">Location</th>
+            <th className="sticky top-0 z-10 bg-white p-2.5">PDF Class</th>
+            <th className="sticky top-0 z-10 bg-white p-2.5">CSV Class</th>
+            <th className="sticky top-0 z-10 bg-white p-2.5">PDF Trainer</th>
+            <th className="sticky top-0 z-10 bg-white p-2.5">CSV Trainer</th>
+            <th className="sticky top-0 z-10 bg-white p-2.5">Issues</th>
           </tr>
         </thead>
         <tbody>
@@ -938,7 +940,7 @@ function FlatListView({ rows, compactMode, activeFocusId }: { rows: AlignedRow[]
                 data-focus-id={focusId || undefined}
                 className={cn(
                   'border-b transition-colors',
-                  isIssue ? 'border-l-4 border-l-amber-500 bg-amber-50/25 hover:bg-amber-50/40' : 'hover:bg-secondary/20',
+                  isIssue ? 'border-l-4 border-l-blue-700 bg-blue-50/25 hover:bg-blue-50/40' : 'hover:bg-secondary/20',
                   isActive && 'ring-2 ring-blue-300 ring-inset'
                 )}
               >
@@ -1139,7 +1141,7 @@ function IssueBoardView({
                 <div
                   key={`${section.type}-${idx}`}
                   data-focus-id={focusId || undefined}
-                  className={cn('p-3 border-l-4 border-l-amber-500 bg-amber-50/25', isActive && 'ring-2 ring-blue-300 ring-inset')}
+                  className={cn('p-3 border-l-4 border-l-blue-700 bg-blue-50/25', isActive && 'ring-2 ring-blue-300 ring-inset')}
                 >
                   <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 mb-2">
                     <Badge variant="outline" className="text-[10px] h-5 px-1.5 bg-white/70">
@@ -1205,12 +1207,12 @@ function SummaryView({ comparison }: { comparison: ScheduleComparisonResult }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-secondary/50 text-left text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">
-                <th className="p-2.5">Day</th>
-                <th className="p-2.5 text-center">PDF</th>
-                <th className="p-2.5 text-center">CSV</th>
-                <th className="p-2.5 text-center">Matches</th>
-                <th className="p-2.5 text-center">Mismatches</th>
-                <th className="p-2.5 text-center">Rate</th>
+                <th className="sticky top-0 z-10 bg-white p-2.5">Day</th>
+                <th className="sticky top-0 z-10 bg-white p-2.5 text-center">PDF</th>
+                <th className="sticky top-0 z-10 bg-white p-2.5 text-center">CSV</th>
+                <th className="sticky top-0 z-10 bg-white p-2.5 text-center">Matches</th>
+                <th className="sticky top-0 z-10 bg-white p-2.5 text-center">Mismatches</th>
+                <th className="sticky top-0 z-10 bg-white p-2.5 text-center">Rate</th>
               </tr>
             </thead>
             <tbody>
@@ -1252,17 +1254,17 @@ function SummaryView({ comparison }: { comparison: ScheduleComparisonResult }) {
               <span className="font-medium text-xs flex-1">{name}</span>
               <div className="flex gap-1.5 text-xs">
                 {stats.matches > 0 && (
-                  <Badge variant="outline" className="text-[10px] bg-white/70 border-emerald-200 text-emerald-700">
+                  <Badge variant="outline" className="text-[10px] bg-white/70 border-blue-200 text-blue-800">
                     {stats.matches} <CheckCircle2 className="w-3 h-3 ml-1" />
                   </Badge>
                 )}
                 {stats.mismatches > 0 && (
-                  <Badge variant="outline" className="text-[10px] bg-white/70 border-amber-300 text-amber-900">
+                  <Badge variant="outline" className="text-[10px] bg-white/70 border-slate-300 text-slate-800">
                     {stats.mismatches} <XCircle className="w-3 h-3 ml-1" />
                   </Badge>
                 )}
                 {stats.missing > 0 && (
-                  <Badge variant="outline" className="text-[10px] bg-white/70 border-amber-300 text-amber-900">
+                  <Badge variant="outline" className="text-[10px] bg-white/70 border-slate-300 text-slate-700">
                     {stats.missing} <AlertTriangle className="w-3 h-3 ml-1" />
                   </Badge>
                 )}

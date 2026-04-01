@@ -6,7 +6,7 @@ import { FilterSection } from './FilterSection';
 import { passesFilters } from '@/lib/filterUtils';
 import { toast } from '@/hooks/use-toast';
 import { alignCsvPdfData, type CsvPdfMatchStatus } from '@/lib/classDataMatcher';
-import { normalizeTime } from '@/lib/normalizers';
+import { normalizeLocation, normalizeTime } from '@/lib/normalizers';
 import { 
   CheckCircle2, 
   AlertTriangle, 
@@ -26,6 +26,7 @@ import {
 interface SideBySideViewerProps {
   csvData: {[day: string]: ClassData[]} | null;
   pdfData: PdfClassData[] | null;
+  locationFilter?: string;
 }
 
 type MismatchType = 'match' | 'trainer-mismatch' | 'class-mismatch' | 'time-mismatch' | 'csv-only' | 'pdf-only';
@@ -40,7 +41,7 @@ interface AlignedRow {
 
 const DAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
-export function SideBySideViewer({ csvData, pdfData }: SideBySideViewerProps) {
+export function SideBySideViewer({ csvData, pdfData, locationFilter = 'all' }: SideBySideViewerProps) {
   const [filters, setFilters] = useState<FilterState>({ day: [], location: [], trainer: [], className: [] });
   const [editablePdfData, setEditablePdfData] = useState<PdfClassData[]>([]);
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
@@ -62,24 +63,31 @@ export function SideBySideViewer({ csvData, pdfData }: SideBySideViewerProps) {
     const alignedRows = alignCsvPdfData(csvData, pdfData);
 
     return alignedRows
-      .filter(row =>
-        passesFilters(
+      .filter(row => {
+        const rowLocation = row.csvClass?.location || row.pdfClass?.location || '';
+        const normalizedRowLocation = normalizeLocation(rowLocation) || rowLocation;
+
+        if (locationFilter !== 'all' && normalizedRowLocation !== locationFilter) {
+          return false;
+        }
+
+        return passesFilters(
           {
             day: row.day,
-            location: row.csvClass?.location || row.pdfClass?.location || '',
+            location: rowLocation,
             trainer: row.csvClass?.trainer1 || row.pdfClass?.trainer || '',
             className: row.csvClass?.className || row.pdfClass?.className || '',
           },
           filters
-        )
-      )
+        );
+      })
       .map(row => ({
         day: row.day,
         csvClass: row.csvClass,
         pdfClass: row.pdfClass,
         matchStatus: row.status,
       }));
-  }, [csvData, pdfData, filters]);
+  }, [csvData, filters, locationFilter, pdfData]);
 
   const allDays = useMemo(() => {
     return Array.from(new Set(allAlignedData.map(row => row.day))).sort((a, b) => {
@@ -169,39 +177,39 @@ export function SideBySideViewer({ csvData, pdfData }: SideBySideViewerProps) {
     switch (status) {
       case 'match':
         return { 
-          icon: <CheckCircle2 className="w-4 h-4 text-emerald-600" />, 
+          icon: <CheckCircle2 className="w-4 h-4 text-blue-800" />, 
           label: 'Match',
           color: 'text-slate-700'
         };
       case 'trainer-mismatch':
         return { 
-          icon: <Users className="w-4 h-4 text-amber-700" />, 
+          icon: <Users className="w-4 h-4 text-blue-700" />, 
           label: 'Trainer',
-          color: 'text-amber-800'
+          color: 'text-slate-800'
         };
       case 'class-mismatch':
         return { 
-          icon: <BookOpen className="w-4 h-4 text-amber-700" />, 
+          icon: <BookOpen className="w-4 h-4 text-blue-700" />, 
           label: 'Class',
-          color: 'text-amber-800'
+          color: 'text-slate-800'
         };
       case 'time-mismatch':
         return { 
-          icon: <Clock className="w-4 h-4 text-amber-700" />, 
+          icon: <Clock className="w-4 h-4 text-blue-700" />, 
           label: 'Time',
-          color: 'text-amber-800'
+          color: 'text-slate-800'
         };
       case 'csv-only':
         return { 
-          icon: <FileSpreadsheet className="w-4 h-4 text-amber-700" />, 
+          icon: <FileSpreadsheet className="w-4 h-4 text-slate-500" />, 
           label: 'CSV Only',
-          color: 'text-amber-800'
+          color: 'text-slate-700'
         };
       case 'pdf-only':
         return { 
-          icon: <FileText className="w-4 h-4 text-amber-700" />, 
+          icon: <FileText className="w-4 h-4 text-slate-500" />, 
           label: 'PDF Only',
-          color: 'text-amber-800'
+          color: 'text-slate-700'
         };
     }
   };
@@ -412,14 +420,14 @@ export function SideBySideViewer({ csvData, pdfData }: SideBySideViewerProps) {
   return (
     <div className="flex flex-col h-full space-y-4">
       {/* Info Banner */}
-      <div className="surface-card p-4 border-l-4 border-l-[#0353A4]">
-        <h3 className="text-sm font-semibold text-slate-900 mb-1">PDF Data is editable</h3>
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h3 className="text-sm font-semibold text-slate-900 mb-1">PDF data is editable</h3>
         <p className="text-xs text-slate-600">
           Click any PDF cell (Time, Class, Trainer) to edit manually. Use "Auto-Correct" to apply CSV values to mismatches, then "Export Edited PDF Data" to download.
         </p>
       </div>
 
-      <div className="surface-card p-3 border border-amber-200 bg-amber-50/60">
+      <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-slate-900">Mismatch Focus</p>
@@ -460,7 +468,7 @@ export function SideBySideViewer({ csvData, pdfData }: SideBySideViewerProps) {
       />
       
       {/* Quick Filter Buttons */}
-      <div className="flex flex-wrap gap-2 p-3 surface-muted shadow-soft">
+      <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
         <span className="text-sm font-medium text-slate-600 mr-2 flex items-center">Quick Filter:</span>
         
         {[
@@ -495,14 +503,14 @@ export function SideBySideViewer({ csvData, pdfData }: SideBySideViewerProps) {
           <AlertTriangle className="w-4 h-4" />
           {showOnlyMismatches ? 'Show All' : 'Show Only Mismatches'}
         </Button>
-        
+
         <Button
           variant="outline"
-          size="sm"
           onClick={copyMismatchesInTableFormat}
+          size="sm"
           className="gap-2"
         >
-          {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+          {copied ? <Check className="w-4 h-4 text-blue-800" /> : <Copy className="w-4 h-4" />}
           Copy Mismatches Table
         </Button>
         
@@ -534,7 +542,7 @@ export function SideBySideViewer({ csvData, pdfData }: SideBySideViewerProps) {
           variant="outline"
           size="sm"
           onClick={exportPdfData}
-          className="gap-2 border-emerald-200 text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50"
+          className="gap-2 border-slate-300 text-slate-700 hover:bg-slate-50"
         >
           <Download className="w-4 h-4" />
           Export Edited PDF Data
@@ -572,12 +580,12 @@ export function SideBySideViewer({ csvData, pdfData }: SideBySideViewerProps) {
                 const mismatchIndex = mismatchIndexByRow.get(row);
                 const isActiveMismatch = mismatchIndex !== undefined && mismatchIndex === activeMismatchIndex;
                 
-                // Enhanced styling for matches and mismatches
+                // Simplified blue/silver styling for clarity
                 const rowBgClass = isMatch 
                   ? 'bg-white hover:bg-slate-50 border-l-2 border-l-transparent' 
                   : (isPdfOnly || isCsvOnly)
-                  ? 'bg-amber-50/40 hover:bg-amber-50/70 border-l-4 border-l-amber-400'
-                  : 'bg-amber-50/70 hover:bg-amber-100/70 border-l-4 border-l-amber-500';
+                  ? 'bg-slate-50 hover:bg-slate-100 border-l-4 border-l-slate-400'
+                  : 'bg-blue-50/50 hover:bg-blue-50 border-l-4 border-l-blue-700';
                 
                 return (
                   <tr

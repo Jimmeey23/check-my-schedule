@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { FileUploadZone } from '@/components/FileUploadZone';
 import { ScheduleViewer } from '@/components/ScheduleViewer';
@@ -16,12 +17,15 @@ import {
 import { readCSVFile } from '@/lib/csvParser';
 import { parsePDF, parsePDFToClassData } from '@/lib/pdfParser';
 import { normalizeSchedule, compareSchedules, normalizeLocation } from '@/lib/normalizers';
+import { LOCATION_QUERY_PARAM, normalizeLocationFilterValue, updateLocationSearchParams } from '@/lib/urlLocationFilter';
+import { createPersistedScheduleSnapshot, hasPersistableScheduleState, restorePersistedScheduleSnapshot } from '@/lib/persistedScheduleState';
 import type { UploadedFile, WeekSchedule, ScheduleComparisonResult, NormalizedClass, ClassData, PdfClassData } from '@/types/schedule';
-import { invokeMomenceFunction } from '@/lib/supabaseClient';
+import { clearPersistedUploadState, invokeMomenceFunction, loadPersistedUploadState, savePersistedUploadState } from '@/lib/supabaseClient';
 import { type MomenceClassData } from '@/types/momence';
 import { parseMomenceSessions } from '@/components/MomenceTab';
 
 const Index = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [pdfSchedules, setPdfSchedules] = useState<Map<string, WeekSchedule>>(new Map());
   const [csvSchedule, setCsvSchedule] = useState<WeekSchedule | null>(null);
@@ -31,8 +35,12 @@ const Index = () => {
   const [momenceSessions, setMomenceSessions] = useState<MomenceClassData[]>([]);
   const [momenceLoading, setMomenceLoading] = useState(false);
   const [momenceError, setMomenceError] = useState<string | null>(null);
-  const [selectedPdfLocation, setSelectedPdfLocation] = useState<string>('all');
-  const [comparisonLocation, setComparisonLocation] = useState<string>('all');
+  const [persistenceReady, setPersistenceReady] = useState(false);
+
+  const sharedLocationFilter = useMemo(
+    () => normalizeLocationFilterValue(searchParams.get(LOCATION_QUERY_PARAM)),
+    [searchParams]
+  );
 
   // Get all locations from CSV
   const csvLocations = useMemo(() => {
@@ -46,6 +54,26 @@ const Index = () => {
   }, [csvSchedule]);
 
   const pdfLocations = useMemo(() => Array.from(pdfSchedules.keys()).filter(k => k && k.trim() !== '').sort(), [pdfSchedules]);
+
+  const momenceLocations = useMemo(() => {
+    const set = new Set<string>();
+    momenceSessions.forEach(session => {
+      if (session.location && session.location.trim()) set.add(session.location);
+    });
+    return Array.from(set).sort();
+  }, [momenceSessions]);
+
+  const allAvailableLocations = useMemo(() => {
+    const set = new Set<string>();
+    [...pdfLocations, ...csvLocations, ...momenceLocations]
+      .filter(location => location && location.trim() !== '')
+      .forEach(location => set.add(location));
+
+    const normalizedFilter = normalizeLocationFilterValue(searchParams.get(LOCATION_QUERY_PARAM));
+    if (normalizedFilter !== 'all') set.add(normalizedFilter);
+
+    return Array.from(set).sort();
+  }, [csvLocations, momenceLocations, pdfLocations, searchParams]);
 
   // Aggregate all PDF class data from all locations
   const aggregatedPdfClassData = useMemo<PdfClassData[] | null>(() => {
@@ -64,7 +92,7 @@ const Index = () => {
     let pdfClasses: NormalizedClass[] = [];
     let csvClasses: NormalizedClass[] = [];
 
-    if (comparisonLocation === 'all') {
+    if (sharedLocationFilter === 'all') {
       // Combine all PDFs
       for (const schedule of pdfSchedules.values()) {
         pdfClasses.push(...normalizeSchedule(schedule.days));
@@ -72,26 +100,26 @@ const Index = () => {
       csvClasses = normalizeSchedule(csvSchedule.days);
     } else {
       // Specific location
-      const pdfSchedule = pdfSchedules.get(comparisonLocation);
+      const pdfSchedule = pdfSchedules.get(sharedLocationFilter);
       if (pdfSchedule) {
         pdfClasses = normalizeSchedule(pdfSchedule.days);
       }
       // Filter CSV to this location
       const filteredDays = csvSchedule.days.map(day => ({
         ...day,
-        classes: day.classes.filter(c => normalizeLocation(c.location) === comparisonLocation),
+        classes: day.classes.filter(c => normalizeLocation(c.location) === sharedLocationFilter),
       })).filter(d => d.classes.length > 0);
       csvClasses = normalizeSchedule(filteredDays);
     }
 
     return compareSchedules(pdfClasses, csvClasses);
-  }, [pdfSchedules, csvSchedule, comparisonLocation]);
+  }, [pdfSchedules, csvSchedule, sharedLocationFilter]);
 
   // Get combined PDF schedule for viewing
   const viewPdfSchedule = useMemo<WeekSchedule | null>(() => {
     if (pdfSchedules.size === 0) return null;
-    if (selectedPdfLocation !== 'all') {
-      return pdfSchedules.get(selectedPdfLocation) || null;
+    if (sharedLocationFilter !== 'all') {
+      return pdfSchedules.get(sharedLocationFilter) || null;
     }
     // Merge all
     const merged: WeekSchedule = {
@@ -113,7 +141,70 @@ const Index = () => {
     const dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
     merged.days = dayOrder.filter(d => dayMap.has(d)).map(d => dayMap.get(d)!);
     return merged;
-  }, [pdfSchedules, selectedPdfLocation]);
+  }, [pdfSchedules, sharedLocationFilter]);
+
+  const handleSharedLocationChange = useCallback((location: string) => {
+    setSearchParams(current => updateLocationSearchParams(current, location));
+  }, [setSearchParams]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const hydratePersistedState = async () => {
+      try {
+        const snapshot = await loadPersistedUploadState();
+        if (!snapshot || cancelled) return;
+
+        const restored = restorePersistedScheduleSnapshot(snapshot);
+        setUploadedFiles(restored.uploadedFiles);
+        setCsvSchedule(restored.csvSchedule);
+        setCsvClassData(restored.csvClassData);
+        setPdfSchedules(restored.pdfSchedules);
+        setPdfClassDataByLocation(restored.pdfClassDataByLocation);
+
+        if (restored.uploadedFiles.length > 0) {
+          setActiveTab('side-by-side');
+        }
+      } catch (error) {
+        console.error('Failed to restore persisted upload state', error);
+      } finally {
+        if (!cancelled) setPersistenceReady(true);
+      }
+    };
+
+    hydratePersistedState();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!persistenceReady) return;
+
+    const currentState = {
+      uploadedFiles,
+      csvSchedule,
+      csvClassData,
+      pdfSchedules,
+      pdfClassDataByLocation,
+    };
+
+    if (!hasPersistableScheduleState(currentState)) {
+      clearPersistedUploadState().catch(error => {
+        console.error('Failed to clear persisted upload state', error);
+      });
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      savePersistedUploadState(createPersistedScheduleSnapshot(currentState)).catch(error => {
+        console.error('Failed to persist upload state', error);
+      });
+    }, 300);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [csvClassData, csvSchedule, pdfClassDataByLocation, pdfSchedules, persistenceReady, uploadedFiles]);
 
   const handleUpload = useCallback(async (file: File, type: 'pdf' | 'csv') => {
     const newFile: UploadedFile = {
@@ -217,6 +308,9 @@ const Index = () => {
     setCsvClassData(null);
     setPdfClassDataByLocation(new Map());
     setActiveTab('upload');
+    clearPersistedUploadState().catch(error => {
+      console.error('Failed to clear persisted upload state', error);
+    });
   }, []);
 
   const fetchMomenceSessions = useCallback(async (startDate?: string, endDate?: string) => {
@@ -306,6 +400,29 @@ const Index = () => {
             )}
           </div>
 
+          {allAvailableLocations.length > 0 && (
+            <div className="flex flex-wrap items-center gap-3 p-4 surface-card">
+              <Building2 className="w-5 h-5 text-blue-600" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-slate-700">Global location filter</p>
+                <p className="text-xs text-slate-500">
+                  Synced with the URL via <code className="font-mono">?location=...</code> so every tab stays in step.
+                </p>
+              </div>
+              <Select value={sharedLocationFilter} onValueChange={handleSharedLocationChange}>
+                <SelectTrigger className="w-[240px] h-10 border-blue-200 focus:border-blue-500">
+                  <SelectValue placeholder="All Locations" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Locations</SelectItem>
+                  {allAvailableLocations.map(location => (
+                    <SelectItem key={location} value={location}>{location}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           {/* Status Bar */}
           {(hasPdf || hasCsv) && (
             <div className="flex flex-wrap gap-3 items-center p-4 surface-card">
@@ -335,24 +452,17 @@ const Index = () => {
             <div className="surface-card gradient-border-top p-8">
               {hasPdf ? (
                 <div className="space-y-6">
-                  {pdfLocations.length > 1 && (
-                    <div className="flex items-center gap-3 p-4 surface-muted">
-                      <Building2 className="w-5 h-5 text-blue-600" />
-                      <span className="text-sm font-medium text-slate-700">Filter by location:</span>
-                      <Select value={selectedPdfLocation} onValueChange={setSelectedPdfLocation}>
-                        <SelectTrigger className="w-[220px] h-10 border-blue-200 focus:border-blue-500"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Locations</SelectItem>
-                          {pdfLocations.filter(l => l && l.trim() !== '').map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
                   {viewPdfSchedule && (
                     <ScheduleViewer
                       schedule={viewPdfSchedule}
                       title={`PDF Schedule — ${viewPdfSchedule.location}`}
+                      locationFilter={sharedLocationFilter}
                     />
+                  )}
+                  {!viewPdfSchedule && sharedLocationFilter !== 'all' && (
+                    <div className="text-center py-16 text-slate-500">
+                      No PDF schedule found for `{sharedLocationFilter}`.
+                    </div>
                   )}
                 </div>
               ) : (
@@ -364,7 +474,13 @@ const Index = () => {
           <TabsContent value="csv" className="animate-fade-in">
             <div className="surface-card gradient-border-top p-8">
               {csvSchedule ? (
-                <ScheduleViewer schedule={csvSchedule} title="CSV Schedule" />
+                <ScheduleViewer
+                  schedule={csvSchedule}
+                  title="CSV Schedule"
+                  locationFilter={sharedLocationFilter}
+                  defaultViewMode="list"
+                  groupListByDay
+                />
               ) : (
                 <div className="text-center py-16 text-slate-500">Upload a CSV to view the schedule</div>
               )}
@@ -375,22 +491,7 @@ const Index = () => {
             <div className="surface-card gradient-border-top p-8">
               {comparison ? (
                 <div className="space-y-6">
-                  {(pdfLocations.length > 1 || csvLocations.length > 1) && (
-                    <div className="flex items-center gap-3 p-4 surface-muted">
-                      <Building2 className="w-5 h-5 text-blue-600" />
-                      <span className="text-sm font-medium text-slate-700">Compare by location:</span>
-                      <Select value={comparisonLocation} onValueChange={setComparisonLocation}>
-                        <SelectTrigger className="w-[220px] h-10 border-blue-200 focus:border-blue-500"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Locations</SelectItem>
-                          {[...new Set([...pdfLocations, ...csvLocations])].filter(l => l && l.trim() !== '').sort().map(l =>
-                            <SelectItem key={l} value={l}>{l}</SelectItem>
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                  <ComparisonView comparison={comparison} />
+                  <ComparisonView comparison={comparison} locationFilter={sharedLocationFilter} />
                 </div>
               ) : (
                 <div className="text-center py-16 text-slate-500">Upload both PDF and CSV files to compare</div>
@@ -401,7 +502,7 @@ const Index = () => {
           <TabsContent value="side-by-side" className="animate-fade-in">
             <div className="surface-card gradient-border-top p-4">
               {csvClassData && aggregatedPdfClassData ? (
-                <SideBySideViewer csvData={csvClassData} pdfData={aggregatedPdfClassData} />
+                <SideBySideViewer csvData={csvClassData} pdfData={aggregatedPdfClassData} locationFilter={sharedLocationFilter} />
               ) : (
                 <div className="text-center py-16 text-slate-500">Upload both CSV and PDF files to use the side-by-side viewer</div>
               )}
@@ -418,6 +519,7 @@ const Index = () => {
                 sessions={momenceSessions}
                 loading={momenceLoading}
                 error={momenceError}
+                locationFilter={sharedLocationFilter}
                 onRefresh={() => fetchMomenceSessions(viewPdfSchedule?.weekStart, viewPdfSchedule?.weekEnd)}
               />
             </div>

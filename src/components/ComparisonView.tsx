@@ -6,7 +6,9 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { useToast } from '@/hooks/use-toast';
 import type { ComparedClass, ScheduleComparisonResult } from '@/types/schedule';
+import { formatMismatchesAsWhatsApp, copyToClipboard } from '@/lib/whatsappFormatter';
 import {
   CheckCircle2,
   XCircle,
@@ -22,11 +24,16 @@ import {
   FilterX,
   ChevronLeft,
   ChevronRight,
+  MessageCircle,
+  Copy,
+  Check,
 } from 'lucide-react';
 
 interface ComparisonViewProps {
   comparison: ScheduleComparisonResult;
+  locationFilter?: string;
 }
+
 
 type CompViewMode = 'side-by-side' | 'list' | 'location' | 'issues' | 'summary';
 type StatusFilter = 'all' | 'match' | 'mismatch' | 'missing' | 'extra';
@@ -361,6 +368,7 @@ function ClassCell({ cls, compactMode }: { cls: ComparedClass | null; compactMod
 }
 
 export function ComparisonView({ comparison }: ComparisonViewProps) {
+  const { toast } = useToast();
   const [viewMode, setViewMode] = useState<CompViewMode>('side-by-side');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [dayFilter, setDayFilter] = useState<string>('all');
@@ -372,6 +380,7 @@ export function ComparisonView({ comparison }: ComparisonViewProps) {
   const [focusIssuesOnly, setFocusIssuesOnly] = useState<boolean>(false);
   const [compactMode, setCompactMode] = useState<boolean>(false);
   const [activeMismatchIndex, setActiveMismatchIndex] = useState<number>(0);
+  const [isCopyingWhatsApp, setIsCopyingWhatsApp] = useState(false);
 
   const { summary } = comparison;
 
@@ -513,6 +522,32 @@ export function ComparisonView({ comparison }: ComparisonViewProps) {
     setCompactMode(false);
     setActiveMismatchIndex(0);
   };
+
+  const handleCopyWhatsAppMessage = async () => {
+    setIsCopyingWhatsApp(true);
+    try {
+      const studioName = locationFilter && locationFilter !== 'all' ? locationFilter : 'the studio';
+      const message = formatMismatchesAsWhatsApp(comparison, locationFilter !== 'all' ? locationFilter : null, studioName);
+      await copyToClipboard(message);
+      
+      toast({
+        title: 'Copied!',
+        description: 'WhatsApp message copied to clipboard. You can now paste it in WhatsApp.',
+        duration: 3000,
+      });
+    } catch (error) {
+      console.error('Failed to copy WhatsApp message:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to copy message to clipboard. Please try again.',
+        variant: 'destructive',
+        duration: 3000,
+      });
+    } finally {
+      setIsCopyingWhatsApp(false);
+    }
+  };
+
 
   const viewModes: { id: CompViewMode; label: string; icon: typeof LayoutGrid }[] = [
     { id: 'side-by-side', label: 'Side by Side', icon: LayoutGrid },
@@ -699,7 +734,17 @@ export function ComparisonView({ comparison }: ComparisonViewProps) {
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              size="sm"
+              onClick={handleCopyWhatsAppMessage}
+              disabled={summary.mismatches === 0 || isCopyingWhatsApp}
+              className="h-8 px-3 bg-green-500 hover:bg-green-600 text-white gap-1.5"
+            >
+              <MessageCircle className="w-4 h-4" />
+              <span className="hidden sm:inline">Copy WhatsApp</span>
+              <span className="sm:hidden text-[10px]">WhatsApp</span>
+            </Button>
             <Button
               size="sm"
               variant="outline"

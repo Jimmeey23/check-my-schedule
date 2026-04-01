@@ -26,6 +26,52 @@ interface MomenceTabProps {
 
 type MismatchType = 'match' | 'trainer-mismatch' | 'class-mismatch' | 'time-mismatch' | 'momence-only' | 'source-only';
 
+type ComparisonSourceRow = {
+  day: string;
+  time: string;
+  className: string;
+  trainer: string;
+  location: string;
+};
+
+export interface MomenceComparisonRow {
+  day: string;
+  momence: MomenceClassData | null;
+  source: ComparisonSourceRow | null;
+  status: MismatchType;
+  matchNote?: string;
+}
+
+export interface MomenceRowFilters {
+  status: MismatchType | 'all';
+  location: string;
+  day: string;
+  time: string;
+  className: string;
+  trainer: string;
+  showOnlyMismatches: boolean;
+}
+
+function getPrimaryRowValues(row: MomenceComparisonRow): MomenceClassData | ComparisonSourceRow | null {
+  return row.momence ?? row.source;
+}
+
+export function rowMatchesMomenceFilters(row: MomenceComparisonRow, filters: MomenceRowFilters): boolean {
+  if (filters.status !== 'all' && row.status !== filters.status) return false;
+  if (filters.showOnlyMismatches && row.status === 'match') return false;
+
+  const primary = getPrimaryRowValues(row);
+  if (!primary) return false;
+
+  if (filters.location !== 'all' && primary.location !== filters.location) return false;
+  if (filters.day !== 'all' && primary.day !== filters.day) return false;
+  if (filters.time !== 'all' && primary.time !== filters.time) return false;
+  if (filters.className !== 'all' && primary.className !== filters.className) return false;
+  if (filters.trainer !== 'all' && primary.trainer !== filters.trainer) return false;
+
+  return true;
+}
+
 export function parseMomenceSessions(sessions: MomenceSession[]): MomenceClassData[] {
   const processedSessions = sessions
     .filter(s => !s.isCancelled && !s.isDraft)
@@ -208,15 +254,7 @@ export function MomenceTab({ startDate, endDate, csvData, pdfData, sessions, loa
     });
     const sourceData = Array.from(uniqueSourceData.values());
 
-    interface AlignedRow {
-      day: string;
-      momence: MomenceClassData | null;
-      source: typeof sourceData[0] | null;
-      status: MismatchType;
-      matchNote?: string;
-    }
-
-    const rows: AlignedRow[] = [];
+    const rows: MomenceComparisonRow[] = [];
     const usedSourceIdx = new Set<number>();
 
     // Match Momence sessions to source
@@ -376,34 +414,17 @@ export function MomenceTab({ startDate, endDate, csvData, pdfData, sessions, loa
 
   // Filtered rows
   const filteredRows = useMemo(() => {
-    let rows = comparisonRows.filter(row => {
-      if (filterStatus !== 'all' && row.status !== filterStatus) return false;
-      
-      const momenceMatches = row.momence && (
-        (filterLocation === 'all' || row.momence.location === filterLocation) &&
-        (filterDay === 'all' || row.momence.day === filterDay) &&
-        (filterTime === 'all' || row.momence.time === filterTime) &&
-        (filterClass === 'all' || row.momence.className === filterClass) &&
-        (filterTrainer === 'all' || row.momence.trainer === filterTrainer)
-      );
-      
-      const sourceMatches = row.source && (
-        (filterLocation === 'all' || row.source.location === filterLocation) &&
-        (filterDay === 'all' || row.source.day === filterDay) &&
-        (filterTime === 'all' || row.source.time === filterTime) &&
-        (filterClass === 'all' || row.source.className === filterClass) &&
-        (filterTrainer === 'all' || row.source.trainer === filterTrainer)
-      );
-      
-      return momenceMatches || sourceMatches;
-    });
-    
-    // Apply mismatch-only filter if enabled
-    if (showOnlyMismatches) {
-      rows = rows.filter(row => row.status !== 'match');
-    }
-    
-    return rows;
+    return comparisonRows.filter(row =>
+      rowMatchesMomenceFilters(row, {
+        status: filterStatus,
+        location: filterLocation,
+        day: filterDay,
+        time: filterTime,
+        className: filterClass,
+        trainer: filterTrainer,
+        showOnlyMismatches,
+      })
+    );
   }, [comparisonRows, filterStatus, filterLocation, filterDay, filterTime, filterClass, filterTrainer, showOnlyMismatches]);
 
   const stats = useMemo(() => {

@@ -2,6 +2,53 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: 'Agrandir-GrandHeavy_2e';
+  src: url('/fonts/Agrandir-GrandHeavy_2e.woff') format('woff');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'IvyPrestoDisplay-BoldItalic_2d';
+  src: url('/fonts/IvyPrestoDisplay-BoldItalic_2d.woff') format('woff');
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Montserrat-Bold_2a';
+  src: url('/fonts/Montserrat-Bold_2a.woff') format('woff');
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Montserrat-Medium_2b';
+  src: url('/fonts/Montserrat-Medium_2b.woff') format('woff');
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Montserrat-Medium_2k';
+  src: url('/fonts/Montserrat-Medium_2k.woff') format('woff');
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Montserrat-Regular_2c';
+  src: url('/fonts/Montserrat-Regular_2c.woff') format('woff');
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'MyriadPro-Regular_2f';
+  src: url('/fonts/MyriadPro-Regular_2f.woff') format('woff');
+  font-display: swap;
+}
+
 /* Schedule Checker Pro - Clean White & Navy Blue Design System */
 
 @layer base {

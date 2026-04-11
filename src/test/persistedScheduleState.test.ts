@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { createPersistedScheduleSnapshot, restorePersistedScheduleSnapshot } from '@/lib/persistedScheduleState';
+import {
+  createPersistedScheduleSnapshot,
+  restorePersistedScheduleSnapshot,
+  shouldRestorePersistedScheduleSnapshot,
+} from '@/lib/persistedScheduleState';
 
 describe('persistedScheduleState', () => {
   it('serializes and restores uploaded schedule state', () => {
@@ -11,6 +15,15 @@ describe('persistedScheduleState', () => {
           type: 'csv',
           uploadedAt: new Date('2026-04-01T10:00:00.000Z'),
           status: 'completed',
+        },
+        {
+          id: 'pdf-1',
+          name: 'schedule.pdf',
+          type: 'pdf',
+          uploadedAt: new Date('2026-04-01T10:05:00.000Z'),
+          status: 'completed',
+          location: 'Kwality House, Kemps Corner',
+          storagePath: 'hashed-user/pdf-1-schedule.pdf',
         },
       ],
       csvSchedule: {
@@ -44,8 +57,24 @@ describe('persistedScheduleState', () => {
     const restored = restorePersistedScheduleSnapshot(snapshot);
 
     expect(restored.uploadedFiles[0]?.uploadedAt).toBeInstanceOf(Date);
+    expect(restored.uploadedFiles[1]?.storagePath).toBe('hashed-user/pdf-1-schedule.pdf');
     expect(restored.csvClassData?.Monday[0]?.timeDate).toBeInstanceOf(Date);
     expect(restored.csvClassData?.Monday[0]?.location).toBe('Kwality House, Kemps Corner');
     expect(restored.csvSchedule?.id).toBe('week-1');
+  });
+
+  it('only restores persisted state after 45 seconds', () => {
+    const snapshot = createPersistedScheduleSnapshot({
+      uploadedFiles: [],
+      csvSchedule: null,
+      csvClassData: null,
+      pdfSchedules: new Map(),
+      pdfClassDataByLocation: new Map(),
+    });
+
+    const updatedAt = new Date(snapshot.updatedAt).getTime();
+
+    expect(shouldRestorePersistedScheduleSnapshot(snapshot, updatedAt + 10_000)).toBe(false);
+    expect(shouldRestorePersistedScheduleSnapshot(snapshot, updatedAt + 45_001)).toBe(true);
   });
 });

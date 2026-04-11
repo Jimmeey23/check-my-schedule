@@ -1,6 +1,7 @@
 import type { WeekSchedule, DaySchedule, ScheduleClass, ClassData, ClassLevel } from '@/types/schedule';
-import { normalizeTime, normalizeTrainer, normalizeLocation, normalizeClassName, normalizeDay } from './normalizers';
+import { normalizeTime, normalizeTrainer, normalizeLocation, normalizeClassName, normalizeDay, isRecognizedClassName } from './normalizers';
 import { isGridStyleCSV, parseGridCSV } from './gridCsvParser';
+import { knownTeachers } from './normalizationMaps';
 
 // List of excluded trainer names
 const EXCLUDED_TRAINERS = [
@@ -25,6 +26,11 @@ const DAY_NAME_REGEX_MAP: Array<{ day: string; regex: RegExp }> = [
   { day: 'Friday', regex: /\bfri(day)?\b/i },
   { day: 'Saturday', regex: /\bsat(urday)?\b/i },
   { day: 'Sunday', regex: /\bsun(day)?\b/i },
+];
+
+const CLASS_KEYWORDS = [
+  'barre', 'mat', 'cycle', 'power', 'fit', 'strength', 'lab', 'cardio', 'recovery',
+  'hiit', 'foundation', 'sweat', 'hosted', 'pre/post', 'prenatal', 'tabata', 'isometric', 'amped',
 ];
 
 const HEADER_ALIASES = {
@@ -346,6 +352,31 @@ function resolveCoverForDay(row: CSVRow, columns: ColumnDetection, day: string):
   return daySpecificValue || genericCover;
 }
 
+function isKnownTrainerName(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return false;
+
+  if (EXCLUDED_TRAINERS.some(name => name.toLowerCase() === normalized)) {
+    return true;
+  }
+
+  return knownTeachers.some(name => name.toLowerCase() === normalized);
+}
+
+function isLikelyValidClassName(rawClassName: string, normalizedClassName: string): boolean {
+  const raw = rawClassName.trim().toLowerCase();
+  const normalized = normalizedClassName.trim().toLowerCase();
+  if (!raw || !normalized) return false;
+
+  if (!isRecognizedClassName(rawClassName, normalizedClassName)) return false;
+
+  if (normalized.startsWith('studio ')) return true;
+  if (CLASS_KEYWORDS.some(keyword => raw.includes(keyword) || normalized.includes(keyword))) return true;
+  if (isKnownTrainerName(raw)) return false;
+
+  return isRecognizedClassName(rawClassName, normalizedClassName);
+}
+
 function normalizeRow(row: CSVRow, columns: ColumnDetection): NormalizedRowData | null {
   const daySource = (columns.day && row[columns.day]) || (columns.date && row[columns.date]) || '';
   const day = resolveDayFromText(daySource);
@@ -369,6 +400,7 @@ function normalizeRow(row: CSVRow, columns: ColumnDetection): NormalizedRowData 
   const location = normalizeLocation(locationRaw) || '';
 
   if (!trainer || !className) return null;
+  if (!isLikelyValidClassName(classNameRaw, className)) return null;
 
   return {
     day,

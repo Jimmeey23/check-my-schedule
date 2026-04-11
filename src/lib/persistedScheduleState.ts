@@ -27,6 +27,8 @@ export interface ScheduleStateForPersistence {
   pdfClassDataByLocation: Map<string, PdfClassData[]>;
 }
 
+export const PERSISTED_STATE_TIMEOUT_MS = 45_000;
+
 function serializeClassData(row: ClassData): SerializedClassData {
   return {
     ...row,
@@ -43,7 +45,7 @@ function deserializeClassData(row: SerializedClassData): ClassData {
 
 export function createPersistedScheduleSnapshot(state: ScheduleStateForPersistence): PersistedScheduleSnapshot {
   return {
-    version: 1,
+    version: 2,
     uploadedFiles: state.uploadedFiles.map(file => ({
       ...file,
       uploadedAt: file.uploadedAt instanceof Date ? file.uploadedAt.toISOString() : new Date(file.uploadedAt).toISOString(),
@@ -77,6 +79,16 @@ export function restorePersistedScheduleSnapshot(snapshot: PersistedScheduleSnap
     pdfSchedules: new Map(snapshot.pdfSchedules),
     pdfClassDataByLocation: new Map(snapshot.pdfClassDataByLocation),
   };
+}
+
+export function shouldRestorePersistedScheduleSnapshot(
+  snapshot: PersistedScheduleSnapshot,
+  now = Date.now()
+): boolean {
+  const updatedAt = new Date(snapshot.updatedAt).getTime();
+  if (Number.isNaN(updatedAt)) return false;
+
+  return now - updatedAt >= PERSISTED_STATE_TIMEOUT_MS;
 }
 
 export function hasPersistableScheduleState(state: ScheduleStateForPersistence): boolean {

@@ -36,6 +36,47 @@ export interface PdfClassData {
   uniqueKey: string;
 }
 
+export type InlinePdfOverlayTarget = 'time' | 'classLine';
+
+export interface InlinePdfOverlayTargetDescriptor {
+  id: string;
+  fileId: string;
+  day: string;
+  classIndex: number;
+  target: InlinePdfOverlayTarget;
+  pageIndex: number;
+  rect: {
+    pageIndex: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  value: string;
+  label: string;
+  synthetic: boolean;
+}
+
+export interface ActiveInlinePdfEditState {
+  descriptorId: string;
+  fileId: string;
+  day: string;
+  classIndex: number;
+  target: InlinePdfOverlayTarget;
+  pageIndex: number;
+  value: string;
+  originalValue: string;
+}
+
+export interface RenderedPdfPageMetrics {
+  pageIndex: number;
+  width: number;
+  height: number;
+  scale: number;
+  baseWidth: number;
+  baseHeight: number;
+}
+
 export interface NormalizedClass {
   id: string;
   day: string;
@@ -113,6 +154,7 @@ export interface UploadedFile {
   status: 'uploading' | 'processing' | 'completed' | 'error';
   error?: string;
   location?: string;
+  storagePath?: string;
 }
 
 export type UploadedPDF = UploadedFile;

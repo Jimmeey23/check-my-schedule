@@ -1,0 +1,55 @@
+@font-face {
+  font-family: 'Agrandir-GrandHeavy_2e';
+  src: url('/pdf-fonts/Agrandir-GrandHeavy_2e.woff') format('woff');
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'IvyPrestoDisplay-BoldItalic_2d';
+  src: url('/pdf-fonts/IvyPrestoDisplay-BoldItalic_2d.woff') format('woff');
+  font-style: italic;
+  font-weight: 700;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Montserrat-Bold_2a';
+  src: url('/pdf-fonts/Montserrat-Bold_2a.woff') format('woff');
+  font-style: normal;
+  font-weight: 700;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Montserrat-Medium_2b';
+  src: url('/pdf-fonts/Montserrat-Medium_2b.woff') format('woff');
+  font-style: normal;
+  font-weight: 500;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Montserrat-Medium_2k';
+  src: url('/pdf-fonts/Montserrat-Medium_2k.woff') format('woff');
+  font-style: normal;
+  font-weight: 500;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Montserrat-Regular_2c';
+  src: url('/pdf-fonts/Montserrat-Regular_2c.woff') format('woff');
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'MyriadPro-Regular_2f';
+  src: url('/pdf-fonts/MyriadPro-Regular_2f.woff') format('woff');
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+}

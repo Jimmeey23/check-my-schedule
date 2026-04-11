@@ -1,5 +1,5 @@
 import type { WeekSchedule, DaySchedule, ScheduleClass, ClassLevel } from '@/types/schedule';
-import { normalizeTime, normalizeTrainer, normalizeLocation, normalizeClassName } from './normalizers';
+import { normalizeTime, normalizeTrainer, normalizeLocation, normalizeClassName, isRecognizedClassName } from './normalizers';
 import { shouldExcludeClass } from './csvParser';
 
 /**
@@ -374,6 +374,10 @@ export function parseGridCSV(csvString: string): WeekSchedule | null {
         }
 
         const className = normalizeClassName(rawClassName || 'Unknown');
+        if (!isRecognizedClassName(rawClassName, className)) {
+          continue;
+        }
+
         const location = rawLocation ? normalizeLocation(rawLocation) : undefined;
         const trainerPrimary = normalizeTrainer(rawTrainer1 || rawTrainer2);
         const coverTrainer = rawCover ? normalizeTrainer(rawCover) : '';

@@ -13,3 +13,30 @@ Object.defineProperty(window, "matchMedia", {
     dispatchEvent: () => {},
   }),
 });
+
+class ResizeObserverMock {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+Object.defineProperty(globalThis, 'ResizeObserver', {
+  writable: true,
+  value: ResizeObserverMock,
+});
+
+Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+  writable: true,
+  value: () => ({
+    clearRect: () => {},
+    fillRect: () => {},
+    drawImage: () => {},
+    getImageData: () => ({ data: new Uint8ClampedArray(4) }),
+    measureText: () => ({ width: 0 }),
+    fillText: () => {},
+    save: () => {},
+    restore: () => {},
+    translate: () => {},
+    scale: () => {},
+  }),
+});

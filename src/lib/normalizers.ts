@@ -1,6 +1,59 @@
 import type { NormalizedClass, ComparedClass, ScheduleComparisonResult, DaySchedule, ClassLevel } from '@/types/schedule';
-import { classNameMappings, teacherNameMappings, locationMappings, classLevels, knownTeachers } from './normalizationMaps';
+import { classNameMappings, teacherNameMappings, locationMappings, classLevels, knownClasses, knownTeachers } from './normalizationMaps';
 import { assessMatch } from './matchingUtils';
+
+const RECOGNIZED_CLASS_ALIASES = [
+  'barre 57',
+  'barre57',
+  'mat 57',
+  'mat57',
+  'powercycle',
+  'power cycle',
+  'cycle',
+  'cardio barre plus',
+  'cardio barre',
+  'cardio b',
+  'fit',
+  'back body blaze',
+  'bbb',
+  'strength lab',
+  'strength',
+  'foundations',
+  'sweat in 30',
+  'sweat',
+  'recovery',
+  'pre post natal',
+  'pre/post natal',
+  'prenatal',
+  'hiit',
+  'amped up',
+  'trainers choice',
+  "trainer's choice",
+  'tabata',
+  'icy isometric',
+  'hosted class',
+];
+
+function simplifyClassText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/^studio\s+/i, '')
+    .replace(/express\b/gi, ' ')
+    .replace(/[()\[\]]/g, ' ')
+    .replace(/[^a-z0-9+/\s']/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+const RECOGNIZED_CLASS_PATTERNS = Array.from(new Set([
+  ...knownClasses.map(name => simplifyClassText(name)).filter(Boolean),
+  ...Object.keys(classNameMappings).map(name => simplifyClassText(name)).filter(Boolean),
+  ...RECOGNIZED_CLASS_ALIASES.map(name => simplifyClassText(name)).filter(Boolean),
+])).map(pattern => new RegExp(`(?:^|\\s)${escapeRegExp(pattern)}(?:\\s|$)`, 'i'));
 
 /**
  * Levenshtein distance for fuzzy matching
@@ -175,12 +228,42 @@ export function normalizeClassName(name: string): string {
   return cleaned;
 }
 
+export function isRecognizedClassName(rawClassName: string, normalizedClassName?: string): boolean {
+  const candidates = [rawClassName, normalizedClassName || '', normalizeClassName(rawClassName)]
+    .map(simplifyClassText)
+    .filter(Boolean);
+
+  if (candidates.length === 0) return false;
+
+  return candidates.some(candidate => RECOGNIZED_CLASS_PATTERNS.some(pattern => pattern.test(candidate)));
+}
+
 /**
  * Normalize trainer name using comprehensive mapping with fuzzy matching
  */
 export function normalizeTrainer(name: string): string {
   if (!name) return '';
   const cleaned = name.trim().replace(/\s+/g, ' ');
+  const lowerCleaned = cleaned.toLowerCase();
+
+  // Check if this is actually a class name, not a trainer name (e.g., "Trainer's Choice")
+  // This handles cases where PDF extraction incorrectly pulls class names as trainer names
+  const classVariants = [
+    "trainer's choice", "trainers choice", "trainer choice", "trainers choice",
+    "hosted class", "hosted", "tabata", "cardio barre", "barre 57", "mat 57",
+    "power cycle", "powercycle", "amped up", "hiit", "recovery", "strength lab"
+  ];
+  if (classVariants.includes(lowerCleaned)) {
+    return '';
+  }
+
+  // Also check classNameMappings for exact matches
+  for (const [key, value] of Object.entries(classNameMappings)) {
+    if (key.toLowerCase() === lowerCleaned) {
+      // This is a class name, not a trainer - return empty
+      return '';
+    }
+  }
 
   // Direct lookup
   if (teacherNameMappings[cleaned]) return teacherNameMappings[cleaned];
@@ -198,7 +281,6 @@ export function normalizeTrainer(name: string): string {
   }
 
   // Match against full known teachers list (first name match)
-  const lowerCleaned = cleaned.toLowerCase();
   for (const teacher of knownTeachers) {
     const lowerTeacher = teacher.toLowerCase();
     if (lowerTeacher === lowerCleaned || lowerTeacher.startsWith(lowerCleaned + ' ')) {

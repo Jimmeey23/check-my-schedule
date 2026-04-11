@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseCSVToSchedule } from '@/lib/csvParser';
 import { alignCsvPdfData } from '@/lib/classDataMatcher';
+import { __pdfParserTestUtils } from '@/lib/pdfParser';
 import type { ClassData, PdfClassData } from '@/types/schedule';
 
 describe('CSV parser', () => {
@@ -50,6 +51,54 @@ Slot,Class,Instructor,Cover,Location,Theme,Class,Cover,Instructor,Location,Theme
 
     expect(monday?.classes[0]?.trainer).toBe('Reshma Sharma');
     expect(tuesday?.classes[0]?.trainer).toBe('Pranjali Jain');
+  });
+
+  it('skips rows where the class column contains a trainer name', () => {
+    const csv = `
+Day,Start Time,Class Name,Trainer,Location
+Friday,10:00 AM,Smita Parekh,Richard D'Costa,Kemps
+Friday,11:00 AM,FIT,Anisha,Kemps
+`;
+
+    const schedule = parseCSVToSchedule(csv);
+    expect(schedule).not.toBeNull();
+
+    const friday = schedule!.days.find(day => day.day === 'Friday');
+    expect(friday?.classes).toHaveLength(1);
+    expect(friday?.classes[0]?.className).toBe('Studio FIT');
+  });
+
+  it('skips rows where the class column is a private session or trainer-only label', () => {
+    const csv = `
+Day,Start Time,Class Name,Trainer,Location
+Friday,10:00 AM,PVT - Smita Parekh,Richard D'Costa,Kemps
+Friday,10:30 AM,Smita Parekh,Richard D'Costa,Kemps
+Friday,11:00 AM,Barre 57,Anisha,Kemps
+`;
+
+    const schedule = parseCSVToSchedule(csv);
+    expect(schedule).not.toBeNull();
+
+    const friday = schedule!.days.find(day => day.day === 'Friday');
+    expect(friday?.classes).toHaveLength(1);
+    expect(friday?.classes[0]?.className).toBe('Studio Barre 57');
+  });
+
+  it('skips grid csv rows whose class cell does not contain a recognized class name', () => {
+    const csv = `
+,9 Feb 2026,,,,,10 Feb 2026,,,,
+,Monday,,,,,Tuesday,,,,
+Slot,Class,Instructor,Cover,Location,Theme,Class,Instructor,Cover,Location,Theme
+7:15 PM,PVT - Smita Parekh,Richard,,Kemps,,Mat 57,Richard,,Bandra,
+8:15 PM,PowerCycle,Anmol,,Kemps,,FIT,Anisha,,Bandra,
+`;
+
+    const schedule = parseCSVToSchedule(csv);
+    expect(schedule).not.toBeNull();
+
+    const monday = schedule!.days.find(day => day.day === 'Monday');
+    expect(monday?.classes).toHaveLength(1);
+    expect(monday?.classes[0]?.className).toBe('Studio PowerCycle');
   });
 });
 
@@ -111,5 +160,107 @@ describe('CSV/PDF alignment', () => {
 
     expect(monday?.status).toBe('trainer-mismatch');
     expect(tuesday?.status).toBe('time-mismatch');
+  });
+
+  it('prefers stronger class matches over same-time wrong-class pairings', () => {
+    const csvData: { [day: string]: ClassData[] } = {
+      Wednesday: [
+        {
+          day: 'Wednesday',
+          timeRaw: '6:30 PM',
+          timeDate: null,
+          time: '18:30',
+          location: 'Kemps',
+          className: 'PowerCycle',
+          trainer1: 'Anmol Sharma',
+          cover: '',
+          notes: '',
+          uniqueKey: 'csv-1',
+        },
+        {
+          day: 'Wednesday',
+          timeRaw: '6:15 PM',
+          timeDate: null,
+          time: '18:15',
+          location: 'Kemps',
+          className: 'Mat 57',
+          trainer1: 'Bret Saldanha',
+          cover: '',
+          notes: '',
+          uniqueKey: 'csv-2',
+        },
+      ],
+    };
+
+    const pdfData: PdfClassData[] = [
+      {
+        day: 'Wednesday',
+        time: '18:15',
+        className: 'Studio PowerCycle',
+        trainer: 'Bret Saldanha',
+        location: 'Kwality House, Kemps Corner',
+        uniqueKey: 'pdf-1',
+      },
+    ];
+
+    const rows = alignCsvPdfData(csvData, pdfData);
+    const mismatch = rows.find(row => row.pdfClass?.uniqueKey === 'pdf-1');
+
+    expect(mismatch?.csvClass?.uniqueKey).toBe('csv-1');
+    expect(mismatch?.status).toBe('time-mismatch');
+  });
+});
+
+describe('PDF parser regressions', () => {
+  const buildTextItems = (line: string) => {
+    const items: Array<{ str: string; x: number; y: number; width: number; height: number }> = [];
+    let x = 10;
+
+    for (const char of line) {
+      if (char === ' ') {
+        x += 5;
+        continue;
+      }
+
+      items.push({
+        str: char,
+        x,
+        y: 100,
+        width: 4,
+        height: 10,
+      });
+
+      x += 4;
+    }
+
+    return items;
+  };
+
+  it('reconstructs split glyph text so PowerCycle maps correctly', () => {
+    const lines = __pdfParserTestUtils.groupIntoLines(buildTextItems('7:15 PM PowerCycle - RAUNAK'));
+    const classes = __pdfParserTestUtils.parseDayClasses(lines, 0);
+
+    expect(classes).toHaveLength(1);
+    expect(classes[0]?.className).toBe('Studio PowerCycle');
+    expect(classes[0]?.trainer).toBe('Raunak Khemuka');
+  });
+
+  it('recovers PowerCycle from fragmented extracted text with trainer appended', () => {
+    const classes = __pdfParserTestUtils.parseDayClasses(['7:15 PM pow e r C y cle - RAUNAK'], 0);
+
+    expect(classes).toHaveLength(1);
+    expect(classes[0]?.className).toBe('Studio PowerCycle');
+    expect(classes[0]?.trainer).toBe('Raunak Khemuka');
+  });
+
+  it('preserves strength lab variants when they continue on the next line', () => {
+    const classes = __pdfParserTestUtils.parseDayClasses([
+      '7:15 PM Strength Lab',
+      '(Full Body) - Raunak',
+    ], 0);
+
+    expect(classes).toHaveLength(1);
+    expect(classes[0]?.className).toBe('Studio Strength Lab (Full Body)');
+    expect(classes[0]?.trainer).toBe('Raunak Khemuka');
   });
 });

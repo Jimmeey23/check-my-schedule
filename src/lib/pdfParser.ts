@@ -3,8 +3,111 @@ import type { WeekSchedule, DaySchedule, ScheduleClass, PdfClassData } from '@/t
 import { classNameMappings, knownTeachers } from './normalizationMaps';
 import { normalizeClassName, normalizeTrainer, normalizeTime, normalizeLocation, getClassLevel } from './normalizers';
 
+type MappingEntry = {
+  key: string;
+  value: string;
+  compactKey: string;
+};
+
+type TeacherEntry = {
+  teacher: string;
+  compactTeacher: string;
+  compactFirstName: string;
+};
+
+const CLASS_MAPPING_ENTRIES: MappingEntry[] = Object.entries(classNameMappings)
+  .map(([key, value]) => ({
+    key,
+    value,
+    compactKey: compactText(key),
+  }))
+  .sort((a, b) => b.compactKey.length - a.compactKey.length);
+
+const TEACHER_ENTRIES: TeacherEntry[] = knownTeachers.map(teacher => ({
+  teacher,
+  compactTeacher: compactText(teacher),
+  compactFirstName: compactText(teacher.split(' ')[0] || ''),
+}));
+
 // Set up worker from CDN
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+
+function compactText(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function normalizeExtractedText(text: string): string {
+  return text
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([),.;:!?%\]])/g, '$1')
+    .replace(/([([\-])\s+/g, '$1')
+    .trim();
+}
+
+function isPotentialContinuationLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) return false;
+  if (DAY_PATTERNS.some(p => p.regex.test(trimmed) && trimmed.length < 30)) return false;
+  if (/^\d{1,2}([:.]\d{2})?\s*(AM|PM)/i.test(trimmed)) return false;
+  return true;
+}
+
+function chooseMoreSpecificClassName(current: string | null, candidate: string | null): string | null {
+  if (!candidate) return current;
+  if (!current) return candidate;
+  if (current === candidate) return current;
+
+  const currentIsGenericStrength = current === 'Studio Strength Lab';
+  const candidateIsSpecificStrength = /^Studio Strength Lab \(.+\)$/.test(candidate);
+  if (currentIsGenericStrength && candidateIsSpecificStrength) return candidate;
+
+  const currentIsGenericCycle = current === 'Studio PowerCycle';
+  const candidateIsSpecificCycle = candidate === 'Studio PowerCycle Express';
+  if (currentIsGenericCycle && candidateIsSpecificCycle) return candidate;
+
+  return candidate.length > current.length ? candidate : current;
+}
+
+function shouldInsertSpace(previousText: string, nextText: string, gap: number, unitWidth: number): boolean {
+  if (!previousText) return false;
+
+  const prevChar = previousText.slice(-1);
+  const nextChar = nextText.charAt(0);
+
+  if (gap <= Math.max(0.8, unitWidth * 0.35)) return false;
+  if (/^[),.;:!?%\]]$/.test(nextChar)) return false;
+  if (/^[(/\[]$/.test(prevChar)) return false;
+
+  return true;
+}
+
+function joinLineItems(items: TextItem[]): string {
+  const sorted = [...items].sort((a, b) => a.x - b.x);
+  let currentLine = '';
+  let previousItem: TextItem | null = null;
+
+  for (const item of sorted) {
+    const text = item.str.trim();
+    if (!text) continue;
+
+    if (!previousItem) {
+      currentLine = text;
+      previousItem = item;
+      continue;
+    }
+
+    const previousText = previousItem.str.trim();
+    const gap = item.x - (previousItem.x + previousItem.width);
+    const previousUnitWidth = previousItem.width / Math.max(previousText.length, 1);
+    const currentUnitWidth = item.width / Math.max(text.length, 1);
+    const unitWidth = Math.max(1.5, Math.min(8, Math.max(previousUnitWidth, currentUnitWidth)));
+
+    currentLine += shouldInsertSpace(currentLine, text, gap, unitWidth) ? ` ${text}` : text;
+    previousItem = item;
+  }
+
+  return normalizeExtractedText(currentLine);
+}
 
 /**
  * Check if a class name is valid (not a person name or invalid entry)
@@ -49,18 +152,63 @@ interface TextItem {
   height: number;
 }
 
+interface PositionedLine {
+  text: string;
+  items: TextItem[];
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  pageIndex: number;
+}
+
+interface TextCluster {
+  text: string;
+  items: TextItem[];
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface PdfTemplateRect {
+  pageIndex: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface PdfTemplateRow {
+  day: string;
+  pageIndex: number;
+  rowIndex: number;
+  sourceTime: string;
+  sourceClassName: string;
+  sourceTrainer: string;
+  timeRect: PdfTemplateRect;
+  classRect: PdfTemplateRect;
+  trainerRect: PdfTemplateRect | null;
+}
+
+export interface PdfTemplateLayout {
+  pageCount: number;
+  rowsByDay: Record<string, PdfTemplateRow[]>;
+}
+
 const DAYS_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const DAY_PATTERNS = DAYS_ORDER.map(d => ({
   day: d,
   regex: new RegExp(`\\b${d}\\b`, 'i'),
 }));
+const TIME_PATTERN = /^(\d{1,2}[:.]\d{2}\s*(AM|PM)|\d{1,2}\s*(AM|PM))/i;
+const INLINE_TIME_PATTERN = /(\d{1,2}[:.]\d{2}\s*(AM|PM)|\d{1,2}\s*(AM|PM))/i;
 
 // =====================================================================
 // TEXT EXTRACTION
 // =====================================================================
 
-async function extractTextItems(file: File): Promise<TextItem[][]> {
-  const arrayBuffer = await file.arrayBuffer();
+async function extractTextItemsFromArrayBuffer(arrayBuffer: ArrayBuffer): Promise<TextItem[][]> {
   const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
   const allPages: TextItem[][] = [];
 
@@ -95,6 +243,10 @@ async function extractTextItems(file: File): Promise<TextItem[][]> {
   return allPages;
 }
 
+async function extractTextItems(file: File): Promise<TextItem[][]> {
+  return extractTextItemsFromArrayBuffer(await file.arrayBuffer());
+}
+
 // =====================================================================
 // LINE GROUPING
 // =====================================================================
@@ -108,21 +260,368 @@ function groupIntoLines(items: TextItem[], yTolerance = 3): string[] {
     return a.x - b.x;
   });
 
-  const lines: string[] = [];
+  const lines: TextItem[][] = [];
   let currentY = sorted[0].y;
-  let currentLine = '';
+  let currentLine: TextItem[] = [];
 
   for (const item of sorted) {
     if (Math.abs(item.y - currentY) > yTolerance) {
-      if (currentLine.trim()) lines.push(currentLine.trim());
-      currentLine = '';
+      if (currentLine.length > 0) lines.push([...currentLine]);
+      currentLine = [];
       currentY = item.y;
     }
-    currentLine += (currentLine ? ' ' : '') + item.str;
+    currentLine.push(item);
   }
-  if (currentLine.trim()) lines.push(currentLine.trim());
+  if (currentLine.length > 0) lines.push([...currentLine]);
 
-  return lines;
+  return lines.map(joinLineItems).filter(Boolean);
+}
+
+function groupIntoPositionedLines(items: TextItem[], pageIndex: number, yTolerance = 3): PositionedLine[] {
+  if (items.length === 0) return [];
+
+  const sorted = [...items].sort((a, b) => {
+    const yDiff = b.y - a.y;
+    if (Math.abs(yDiff) > yTolerance) return yDiff;
+    return a.x - b.x;
+  });
+
+  const groups: TextItem[][] = [];
+  let currentY = sorted[0].y;
+  let currentLine: TextItem[] = [];
+
+  for (const item of sorted) {
+    if (Math.abs(item.y - currentY) > yTolerance) {
+      if (currentLine.length > 0) groups.push([...currentLine]);
+      currentLine = [];
+      currentY = item.y;
+    }
+    currentLine.push(item);
+  }
+
+  if (currentLine.length > 0) groups.push([...currentLine]);
+
+  return groups
+    .map(lineItems => {
+      const sortedItems = [...lineItems].sort((a, b) => a.x - b.x);
+      const text = joinLineItems(sortedItems);
+      if (!text) return null;
+
+      const minX = Math.min(...sortedItems.map(item => item.x));
+      const maxX = Math.max(...sortedItems.map(item => item.x + item.width));
+      const maxHeight = Math.max(...sortedItems.map(item => item.height || 0), 10);
+
+      return {
+        text,
+        items: sortedItems,
+        x: minX,
+        y: sortedItems[0].y,
+        width: Math.max(maxX - minX, 1),
+        height: maxHeight,
+        pageIndex,
+      } satisfies PositionedLine;
+    })
+    .filter((line): line is PositionedLine => Boolean(line));
+}
+
+function clusterLineItems(items: TextItem[]): TextCluster[] {
+  if (items.length === 0) return [];
+
+  const sorted = [...items].sort((a, b) => a.x - b.x);
+  const clusters: TextItem[][] = [];
+  let currentCluster: TextItem[] = [sorted[0]];
+
+  for (let index = 1; index < sorted.length; index++) {
+    const previous = sorted[index - 1];
+    const current = sorted[index];
+    const previousText = previous.str.trim();
+    const currentText = current.str.trim();
+    const previousUnitWidth = previous.width / Math.max(previousText.length, 1);
+    const currentUnitWidth = current.width / Math.max(currentText.length, 1);
+    const gap = current.x - (previous.x + previous.width);
+    const threshold = Math.max(6, Math.max(previousUnitWidth, currentUnitWidth) * 1.2);
+
+    if (gap > threshold) {
+      clusters.push(currentCluster);
+      currentCluster = [current];
+    } else {
+      currentCluster.push(current);
+    }
+  }
+
+  clusters.push(currentCluster);
+
+  return clusters.map(clusterItems => {
+    const text = joinLineItems(clusterItems);
+    const minX = Math.min(...clusterItems.map(item => item.x));
+    const maxX = Math.max(...clusterItems.map(item => item.x + item.width));
+    const minY = Math.min(...clusterItems.map(item => item.y));
+    const maxY = Math.max(...clusterItems.map(item => item.y + item.height));
+
+    return {
+      text,
+      items: clusterItems,
+      x: minX,
+      y: minY,
+      width: Math.max(maxX - minX, 1),
+      height: Math.max(maxY - minY, 1),
+    } satisfies TextCluster;
+  });
+}
+
+function rectFromItems(items: TextItem[], pageIndex: number, padding = 1): PdfTemplateRect | null {
+  if (items.length === 0) return null;
+
+  const minX = Math.min(...items.map(item => item.x));
+  const maxX = Math.max(...items.map(item => item.x + item.width));
+  const minY = Math.min(...items.map(item => item.y));
+  const maxY = Math.max(...items.map(item => item.y + item.height));
+
+  return {
+    pageIndex,
+    x: Math.max(minX - padding, 0),
+    y: Math.max(minY - padding, 0),
+    width: Math.max(maxX - minX + padding * 2, 1),
+    height: Math.max(maxY - minY + padding * 2, 1),
+  };
+}
+
+function rectFromClusters(clusters: TextCluster[], pageIndex: number, padding = 1): PdfTemplateRect | null {
+  return rectFromItems(clusters.flatMap(cluster => cluster.items), pageIndex, padding);
+}
+
+function findClusterIndex(clusters: TextCluster[], predicate: (cluster: TextCluster) => boolean): number {
+  return clusters.findIndex(cluster => predicate(cluster));
+}
+
+function findTimeInLine(text: string): RegExpMatchArray | null {
+  return text.match(TIME_PATTERN) || text.match(INLINE_TIME_PATTERN);
+}
+
+function splitRectHorizontally(rect: PdfTemplateRect, ratio: number): [PdfTemplateRect, PdfTemplateRect] {
+  const leftWidth = Math.max(Math.floor(rect.width * ratio), 1);
+  const rightWidth = Math.max(rect.width - leftWidth, 1);
+
+  return [
+    { ...rect, width: leftWidth },
+    { ...rect, x: rect.x + leftWidth, width: rightWidth },
+  ];
+}
+
+function buildTemplateRowFromLine(
+  day: string,
+  rowIndex: number,
+  line: PositionedLine,
+  continuationLine?: PositionedLine
+): PdfTemplateRow | null {
+  const timeMatch = findTimeInLine(line.text);
+  if (!timeMatch) return null;
+
+  const time = timeMatch[0].trim();
+  const timeIndex = line.text.indexOf(timeMatch[0]);
+  const rest = normalizeExtractedText(line.text.slice(timeIndex + timeMatch[0].length).trim());
+  const continuationText = continuationLine ? normalizeExtractedText(continuationLine.text) : '';
+  const combinedRest = continuationText ? `${rest} ${continuationText}` : rest;
+  const className = chooseMoreSpecificClassName(matchClassName(rest), matchClassName(combinedRest)) || rest;
+  const trainer = matchTrainer(combinedRest) || matchTrainer(rest) || '';
+
+  if (!className && !trainer) return null;
+
+  const clusters = clusterLineItems(line.items);
+  if (clusters.length === 0) return null;
+
+  const timeClusterIndex = Math.max(0, findClusterIndex(clusters, cluster => TIME_PATTERN.test(cluster.text)));
+  const trainerClusterIndex = findClusterIndex(clusters, cluster => Boolean(matchTrainer(cluster.text)));
+  const classClusterIndex = findClusterIndex(clusters, cluster => Boolean(matchClassName(cluster.text)));
+
+  const timeRect = rectFromClusters([clusters[timeClusterIndex] ?? clusters[0]], line.pageIndex, 2);
+  if (!timeRect) return null;
+
+  let classClusters = clusters.slice(Math.min(timeClusterIndex + 1, clusters.length));
+  let trainerRect: PdfTemplateRect | null = null;
+
+  if (trainerClusterIndex >= 0) {
+    trainerRect = rectFromClusters([clusters[trainerClusterIndex]], line.pageIndex, 2);
+    const classEnd = trainerClusterIndex > timeClusterIndex ? trainerClusterIndex : clusters.length;
+    classClusters = clusters.slice(Math.min(timeClusterIndex + 1, classEnd));
+  }
+
+  if (classClusterIndex >= 0 && classClusterIndex > timeClusterIndex && (trainerClusterIndex < 0 || classClusterIndex < trainerClusterIndex)) {
+    const fallbackEnd = trainerClusterIndex > classClusterIndex ? trainerClusterIndex : clusters.length;
+    classClusters = clusters.slice(classClusterIndex, fallbackEnd);
+  }
+
+  if (continuationLine) {
+    const continuationClusters = clusterLineItems(continuationLine.items).filter(cluster => cluster.text.trim().length > 0);
+    classClusters = [...classClusters, ...continuationClusters];
+  }
+
+  let classRect = rectFromClusters(classClusters, line.pageIndex, 2);
+  if (!classRect) {
+    const remainingRect = rectFromItems(line.items.filter(item => item.x >= timeRect.x + timeRect.width - 2), line.pageIndex, 2);
+    if (remainingRect) {
+      if (trainerRect) {
+        const maxWidth = Math.max(trainerRect.x - remainingRect.x - 4, Math.floor(remainingRect.width * 0.65));
+        classRect = { ...remainingRect, width: Math.max(maxWidth, 1) };
+      } else {
+        const [nextClassRect, nextTrainerRect] = splitRectHorizontally(remainingRect, 0.7);
+        classRect = nextClassRect;
+        trainerRect = nextTrainerRect;
+      }
+    }
+  }
+
+  if (!trainerRect && classRect) {
+    const [nextClassRect, nextTrainerRect] = splitRectHorizontally(classRect, 0.72);
+    classRect = nextClassRect;
+    trainerRect = nextTrainerRect;
+  }
+
+  if (!classRect) return null;
+
+  return {
+    day,
+    pageIndex: line.pageIndex,
+    rowIndex,
+    sourceTime: time,
+    sourceClassName: className,
+    sourceTrainer: trainer,
+    timeRect,
+    classRect,
+    trainerRect,
+  };
+}
+
+function extractTemplateRowsFromDayLines(lines: PositionedLine[], day: string): PdfTemplateRow[] {
+  const rows: PdfTemplateRow[] = [];
+
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
+    const trimmed = line.text.trim();
+    if (!trimmed) continue;
+    if (DAY_PATTERNS.some(pattern => pattern.regex.test(trimmed) && trimmed.length < 30)) continue;
+    if (!findTimeInLine(trimmed)) continue;
+
+    const continuationLine = isPotentialContinuationLine(lines[index + 1]?.text || '') ? lines[index + 1] : undefined;
+    const row = buildTemplateRowFromLine(day, rows.length, line, continuationLine);
+
+    if (row) {
+      rows.push(row);
+      if (continuationLine) index += 1;
+    }
+  }
+
+  return rows;
+}
+
+function appendTemplateRows(target: Record<string, PdfTemplateRow[]>, rows: PdfTemplateRow[]) {
+  for (const row of rows) {
+    if (!target[row.day]) target[row.day] = [];
+    target[row.day].push({
+      ...row,
+      rowIndex: target[row.day].length,
+    });
+  }
+}
+
+function extractTemplateRowsFromColumnarPage(items: TextItem[], pageIndex: number): PdfTemplateRow[] {
+  const headers = findDayHeaders(items);
+  if (headers.length < 2) return [];
+
+  const headerRows = groupHeadersByRow(headers);
+  if (!headerRows.some(row => row.length >= 2)) return [];
+
+  const pageMinY = Math.min(...items.map(item => item.y));
+  const regions = buildDayRegions(headerRows, pageMinY);
+  const regionItems = assignItemsToRegions(items, regions);
+  const rows: PdfTemplateRow[] = [];
+
+  for (const region of regions) {
+    const dayItems = regionItems.get(region.day) || [];
+    if (!dayItems.length) continue;
+
+    const dayLines = groupIntoPositionedLines(dayItems, pageIndex);
+    rows.push(...extractTemplateRowsFromDayLines(dayLines, region.day));
+  }
+
+  return rows;
+}
+
+function extractTemplateRowsFromLinearPage(items: TextItem[], pageIndex: number): PdfTemplateRow[] {
+  const lines = groupIntoPositionedLines(items, pageIndex);
+  const rows: PdfTemplateRow[] = [];
+  let currentDay: string | null = null;
+  let currentLines: PositionedLine[] = [];
+
+  for (const line of lines) {
+    let foundDay: string | null = null;
+    for (const { day, regex } of DAY_PATTERNS) {
+      if (regex.test(line.text) && line.text.trim().length < 30) {
+        foundDay = day;
+        break;
+      }
+    }
+
+    if (foundDay) {
+      if (currentDay && currentLines.length > 0) {
+        rows.push(...extractTemplateRowsFromDayLines(currentLines, currentDay));
+      }
+      currentDay = foundDay;
+      currentLines = [];
+    } else if (currentDay) {
+      currentLines.push(line);
+    }
+  }
+
+  if (currentDay && currentLines.length > 0) {
+    rows.push(...extractTemplateRowsFromDayLines(currentLines, currentDay));
+  }
+
+  return rows;
+}
+
+function buildTemplateLayoutFromPages(pages: TextItem[][]): PdfTemplateLayout {
+  const rowsByDay: Record<string, PdfTemplateRow[]> = {};
+
+  pages.forEach((pageItems, pageIndex) => {
+    const columnarRows = extractTemplateRowsFromColumnarPage(pageItems, pageIndex);
+    if (columnarRows.length > 0) {
+      appendTemplateRows(rowsByDay, columnarRows);
+      return;
+    }
+
+    appendTemplateRows(rowsByDay, extractTemplateRowsFromLinearPage(pageItems, pageIndex));
+  });
+
+  for (const day of Object.keys(rowsByDay)) {
+    rowsByDay[day].sort((a, b) => {
+      if (a.pageIndex !== b.pageIndex) return a.pageIndex - b.pageIndex;
+      return b.timeRect.y - a.timeRect.y;
+    });
+    rowsByDay[day] = rowsByDay[day].map((row, index) => ({ ...row, rowIndex: index }));
+  }
+
+  return {
+    pageCount: pages.length,
+    rowsByDay,
+  };
+}
+
+export async function extractPdfTemplateLayout(file: File): Promise<PdfTemplateLayout> {
+  return buildTemplateLayoutFromPages(await extractTextItems(file));
+}
+
+export async function extractPdfTemplateLayoutFromArrayBuffer(arrayBuffer: ArrayBuffer): Promise<PdfTemplateLayout> {
+  return buildTemplateLayoutFromPages(await extractTextItemsFromArrayBuffer(arrayBuffer));
+}
+
+export async function extractPdfTemplateLayoutFromUrl(url: string): Promise<PdfTemplateLayout> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to load original PDF template (${response.status})`);
+  }
+
+  return extractPdfTemplateLayoutFromArrayBuffer(await response.arrayBuffer());
 }
 
 // =====================================================================
@@ -173,31 +672,43 @@ function detectDateRange(lines: string[]): { weekStart: string; weekEnd: string 
 // =====================================================================
 
 function matchClassName(text: string): string | null {
-  const cleaned = text.trim();
+  const cleaned = normalizeExtractedText(text);
   if (!cleaned) return null;
 
   const normalized = normalizeClassName(cleaned);
   if (normalized.startsWith('Studio ')) return normalized;
 
   const upper = cleaned.toUpperCase();
-  for (const [key, value] of Object.entries(classNameMappings)) {
-    if (upper.includes(key.toUpperCase())) return value;
+  const compact = compactText(cleaned);
+
+  for (const entry of CLASS_MAPPING_ENTRIES) {
+    if (upper.includes(entry.key.toUpperCase()) || compact.includes(entry.compactKey)) {
+      return entry.value;
+    }
   }
 
   return null;
 }
 
 function matchTrainer(text: string): string | null {
-  const cleaned = text.trim();
+  const cleaned = normalizeExtractedText(text);
   if (!cleaned) return null;
 
   const normalized = normalizeTrainer(cleaned);
   if (knownTeachers.includes(normalized)) return normalized;
 
-  for (const teacher of knownTeachers) {
-    const firstName = teacher.split(' ')[0];
-    if (firstName.length >= 3 && cleaned.toLowerCase().includes(firstName.toLowerCase())) {
-      return teacher;
+  const lower = cleaned.toLowerCase();
+  const compact = compactText(cleaned);
+
+  for (const entry of TEACHER_ENTRIES) {
+    const firstName = entry.teacher.split(' ')[0];
+    if (
+      firstName.length >= 3 &&
+      (lower.includes(firstName.toLowerCase()) ||
+        compact.includes(entry.compactFirstName) ||
+        entry.compactTeacher.startsWith(compact))
+    ) {
+      return entry.teacher;
     }
   }
 
@@ -220,14 +731,35 @@ function parseDayClasses(lines: string[], dayIndex: number): ScheduleClass[] {
     if (DAY_PATTERNS.some(p => p.regex.test(line) && line.length < 30)) continue;
 
     // Find time pattern
-    const timeMatch = line.match(/^(\d{1,2}[:.]\d{2}\s*(AM|PM)|\d{1,2}\s*(AM|PM))/i);
+    const timeMatch = line.match(TIME_PATTERN);
     if (!timeMatch) {
-      const inlineTime = line.match(/(\d{1,2}[:.]\d{2}\s*(AM|PM))/i);
+      const inlineTime = line.match(INLINE_TIME_PATTERN);
       if (!inlineTime) continue;
+      const time = inlineTime[0].trim();
+      const rest = normalizeExtractedText(line.slice(line.indexOf(inlineTime[0]) + inlineTime[0].length).trim());
+      const continuationLine = isPotentialContinuationLine(lines[i + 1] || '') ? normalizeExtractedText(lines[i + 1]) : '';
+      const combinedRest = continuationLine ? `${rest} ${continuationLine}` : rest;
+
+      let className = chooseMoreSpecificClassName(matchClassName(rest), matchClassName(combinedRest));
+      let trainer = matchTrainer(combinedRest) || matchTrainer(rest);
+
+      if (time && (className || trainer)) {
+        const normalizedName = className || rest;
+        classes.push({
+          id: `pdf-${dayIndex}-${classCounter++}`,
+          time,
+          className: className || rest,
+          trainer: trainer || 'TBD',
+          level: getClassLevel(normalizedName),
+        });
+      }
+      continue;
     }
 
     const time = timeMatch ? timeMatch[0].trim() : '';
-    const rest = timeMatch ? line.slice(timeMatch[0].length).trim() : line;
+    const rest = timeMatch ? normalizeExtractedText(line.slice(timeMatch[0].length).trim()) : line;
+    const continuationLine = isPotentialContinuationLine(lines[i + 1] || '') ? normalizeExtractedText(lines[i + 1]) : '';
+    const combinedRest = continuationLine ? `${rest} ${continuationLine}` : rest;
 
     let className: string | null = null;
     let trainer: string | null = null;
@@ -240,7 +772,8 @@ function parseDayClasses(lines: string[], dayIndex: number): ScheduleClass[] {
       if (!trainer) { trainer = matchTrainer(trimmed); if (trainer) continue; }
     }
 
-    if (!className) className = matchClassName(rest);
+    className = chooseMoreSpecificClassName(className, matchClassName(rest));
+    className = chooseMoreSpecificClassName(className, matchClassName(combinedRest));
 
     if (!className) {
       const words = rest.split(/\s+/);
@@ -253,20 +786,27 @@ function parseDayClasses(lines: string[], dayIndex: number): ScheduleClass[] {
       }
     }
 
+    if (!className && continuationLine) {
+      const words = combinedRest.split(/\s+/);
+      for (let w = 0; w < words.length && !className; w++) {
+        for (let len = Math.min(8, words.length - w); len > 0; len--) {
+          const candidate = words.slice(w, w + len).join(' ');
+          className = matchClassName(candidate);
+          if (className) break;
+        }
+      }
+    }
+
     if (!trainer) {
-      const words = rest.split(/\s+/);
+      const words = combinedRest.split(/\s+/);
       for (const word of words) {
         trainer = matchTrainer(word);
         if (trainer) break;
       }
     }
 
-    if (!trainer && i + 1 < lines.length) {
-      const nextLine = lines[i + 1].trim();
-      if (!nextLine.match(/^\d{1,2}[:.]\d{2}\s*(AM|PM)/i) &&
-          !DAY_PATTERNS.some(p => p.regex.test(nextLine) && nextLine.length < 30)) {
-        trainer = matchTrainer(nextLine);
-      }
+    if (!trainer && continuationLine) {
+      trainer = matchTrainer(continuationLine);
     }
 
     if (time && (className || trainer)) {
@@ -661,3 +1201,10 @@ export async function parsePDFToClassData(file: File, parsedSchedule?: WeekSched
   const schedule = parsedSchedule ?? await parsePDF(file);
   return scheduleToPdfClassData(schedule);
 }
+
+export const __pdfParserTestUtils = {
+  groupIntoLines,
+  parseDayClasses,
+  matchClassName,
+  matchTrainer,
+};

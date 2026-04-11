@@ -1,9 +1,10 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { FileUploadZone } from '@/components/FileUploadZone';
 import { ScheduleViewer } from '@/components/ScheduleViewer';
 import { ComparisonView } from '@/components/ComparisonView';
+import { PdfSourceEditorTab } from '@/components/PdfSourceEditorTab';
 import { SideBySideViewer } from '@/components/SideBySideViewer';
 import { MomenceTab } from '@/components/MomenceTab';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -12,17 +13,28 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   FileSpreadsheet, FileText, GitCompare, Trash2, Upload,
-  CheckCircle2, AlertCircle, Building2, Globe
+  CheckCircle2, AlertCircle, Building2, Globe, Eye
 } from 'lucide-react';
 import { readCSVFile } from '@/lib/csvParser';
-import { parsePDF, parsePDFToClassData } from '@/lib/pdfParser';
+import { parsePDF, parsePDFToClassData, scheduleToPdfClassData } from '@/lib/pdfParser';
 import { normalizeSchedule, compareSchedules, normalizeLocation } from '@/lib/normalizers';
 import { LOCATION_QUERY_PARAM, normalizeLocationFilterValue, updateLocationSearchParams } from '@/lib/urlLocationFilter';
-import { createPersistedScheduleSnapshot, hasPersistableScheduleState, restorePersistedScheduleSnapshot } from '@/lib/persistedScheduleState';
+import {
+  createPersistedScheduleSnapshot,
+  hasPersistableScheduleState,
+  restorePersistedScheduleSnapshot,
+  shouldRestorePersistedScheduleSnapshot,
+} from '@/lib/persistedScheduleState';
 import type { UploadedFile, WeekSchedule, ScheduleComparisonResult, NormalizedClass, ClassData, PdfClassData } from '@/types/schedule';
-import { clearPersistedUploadState, invokeMomenceFunction, loadPersistedUploadState, savePersistedUploadState } from '@/lib/supabaseClient';
+import { clearPersistedUploadState, deletePersistedPdf, invokeMomenceFunction, loadPersistedUploadState, savePersistedUploadState, uploadPersistedPdf, urlLooksLikePdf } from '@/lib/supabaseClient';
 import { type MomenceClassData } from '@/types/momence';
 import { parseMomenceSessions } from '@/components/MomenceTab';
+
+function revokePreviewUrl(url?: string) {
+  if (url?.startsWith('blob:')) {
+    URL.revokeObjectURL(url);
+  }
+}
 
 const Index = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -31,11 +43,13 @@ const Index = () => {
   const [csvSchedule, setCsvSchedule] = useState<WeekSchedule | null>(null);
   const [csvClassData, setCsvClassData] = useState<{[day: string]: ClassData[]} | null>(null);
   const [pdfClassDataByLocation, setPdfClassDataByLocation] = useState<Map<string, PdfClassData[]>>(new Map());
+  const [pdfPreviewUrls, setPdfPreviewUrls] = useState<Record<string, string>>({});
   const [activeTab, setActiveTab] = useState('upload');
   const [momenceSessions, setMomenceSessions] = useState<MomenceClassData[]>([]);
   const [momenceLoading, setMomenceLoading] = useState(false);
   const [momenceError, setMomenceError] = useState<string | null>(null);
   const [persistenceReady, setPersistenceReady] = useState(false);
+  const pdfPreviewUrlsRef = useRef<Record<string, string>>({});
 
   const sharedLocationFilter = useMemo(
     () => normalizeLocationFilterValue(searchParams.get(LOCATION_QUERY_PARAM)),
@@ -151,9 +165,22 @@ const Index = () => {
     let cancelled = false;
 
     const hydratePersistedState = async () => {
+      // Auto-load from previous session is disabled
+      setPersistenceReady(true);
+      return;
+      
+      // Previous auto-load logic is commented out below
+      /*
       try {
-        const snapshot = await loadPersistedUploadState();
+        const { snapshot, pdfPreviewUrls } = await loadPersistedUploadState();
         if (!snapshot || cancelled) return;
+
+        if (!shouldRestorePersistedScheduleSnapshot(snapshot)) {
+          clearPersistedUploadState().catch(error => {
+            console.error('Failed to clear fresh persisted upload state', error);
+          });
+          return;
+        }
 
         const restored = restorePersistedScheduleSnapshot(snapshot);
         setUploadedFiles(restored.uploadedFiles);
@@ -161,6 +188,7 @@ const Index = () => {
         setCsvClassData(restored.csvClassData);
         setPdfSchedules(restored.pdfSchedules);
         setPdfClassDataByLocation(restored.pdfClassDataByLocation);
+        setPdfPreviewUrls(pdfPreviewUrls || {});
 
         if (restored.uploadedFiles.length > 0) {
           setActiveTab('side-by-side');
@@ -170,12 +198,23 @@ const Index = () => {
       } finally {
         if (!cancelled) setPersistenceReady(true);
       }
+      */
     };
 
     hydratePersistedState();
 
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    pdfPreviewUrlsRef.current = pdfPreviewUrls;
+  }, [pdfPreviewUrls]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(pdfPreviewUrlsRef.current).forEach(url => revokePreviewUrl(url));
     };
   }, []);
 
@@ -249,6 +288,26 @@ const Index = () => {
 
         // Parse PDF to ClassData format (reuse parsed schedule to avoid re-parsing file)
         const pdfData = await parsePDFToClassData(file, schedule);
+        let storagePath: string | undefined;
+        let previewUrl = URL.createObjectURL(file);
+
+        try {
+          const persistedPdf = await uploadPersistedPdf(file, newFile.id);
+          storagePath = persistedPdf.storagePath;
+          if (persistedPdf.signedUrl && await urlLooksLikePdf(persistedPdf.signedUrl)) {
+            revokePreviewUrl(previewUrl);
+            previewUrl = persistedPdf.signedUrl;
+          } else if (persistedPdf.signedUrl) {
+            console.warn('Persisted preview URL did not return PDF content. Keeping the local blob preview instead.', persistedPdf.signedUrl);
+          }
+        } catch (persistError) {
+          console.warn('PDF was parsed locally but could not be persisted to Supabase storage.', persistError);
+        }
+
+        setPdfPreviewUrls(prev => ({
+          ...prev,
+          [newFile.id]: previewUrl,
+        }));
         
         // Accumulate PDF data by location
         setPdfClassDataByLocation(prev => {
@@ -259,7 +318,7 @@ const Index = () => {
         });
 
         setUploadedFiles(prev => prev.map(f => f.id === newFile.id ? {
-          ...f, status: 'completed' as const, data: schedule, location
+          ...f, status: 'completed' as const, data: schedule, location, storagePath
         } : f));
 
         setPdfSchedules(prev => {
@@ -281,6 +340,19 @@ const Index = () => {
   const handleRemoveFile = useCallback((id: string) => {
     const file = uploadedFiles.find(f => f.id === id);
     if (file) {
+      setPdfPreviewUrls(prev => {
+        const next = { ...prev };
+        revokePreviewUrl(next[id]);
+        delete next[id];
+        return next;
+      });
+
+      if (file.type === 'pdf' && file.storagePath) {
+        deletePersistedPdf(file.storagePath).catch(error => {
+          console.error('Failed to delete persisted PDF', error);
+        });
+      }
+
       if (file.type === 'pdf' && file.location) {
         setPdfSchedules(prev => {
           const next = new Map(prev);
@@ -302,16 +374,47 @@ const Index = () => {
   }, [uploadedFiles]);
 
   const handleClearAll = useCallback(() => {
+    Object.values(pdfPreviewUrlsRef.current).forEach(url => revokePreviewUrl(url));
     setUploadedFiles([]);
     setPdfSchedules(new Map());
     setCsvSchedule(null);
     setCsvClassData(null);
     setPdfClassDataByLocation(new Map());
+    setPdfPreviewUrls({});
     setActiveTab('upload');
     clearPersistedUploadState().catch(error => {
       console.error('Failed to clear persisted upload state', error);
     });
   }, []);
+
+  const handleUpdatePdfSchedule = useCallback((fileId: string, updatedSchedule: WeekSchedule) => {
+    const targetFile = uploadedFiles.find(file => file.id === fileId && file.type === 'pdf');
+    if (!targetFile) return;
+
+    const previousLocation = targetFile.location || targetFile.data?.location;
+    const nextLocation = updatedSchedule.location;
+    const nextPdfClassData = scheduleToPdfClassData(updatedSchedule);
+
+    setUploadedFiles(prev => prev.map(file =>
+      file.id === fileId
+        ? { ...file, data: updatedSchedule, location: nextLocation }
+        : file
+    ));
+
+    setPdfSchedules(prev => {
+      const next = new Map(prev);
+      if (previousLocation) next.delete(previousLocation);
+      next.set(nextLocation, updatedSchedule);
+      return next;
+    });
+
+    setPdfClassDataByLocation(prev => {
+      const next = new Map(prev);
+      if (previousLocation) next.delete(previousLocation);
+      next.set(nextLocation, nextPdfClassData);
+      return next;
+    });
+  }, [uploadedFiles]);
 
   const fetchMomenceSessions = useCallback(async (startDate?: string, endDate?: string) => {
     setMomenceLoading(true);
@@ -371,6 +474,10 @@ const Index = () => {
               </TabsTrigger>
               <TabsTrigger value="pdf" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all" disabled={!hasPdf}>
                 <FileText className="w-4 h-4" /> PDF
+                {hasPdf && <Badge variant="secondary" className="text-xs h-5 px-1.5 bg-red-100 text-red-700 border-red-200">{pdfSchedules.size}</Badge>}
+              </TabsTrigger>
+              <TabsTrigger value="pdf-files" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all" disabled={!hasPdf}>
+                <Eye className="w-4 h-4" /> PDF Files
                 {hasPdf && <Badge variant="secondary" className="text-xs h-5 px-1.5 bg-red-100 text-red-700 border-red-200">{pdfSchedules.size}</Badge>}
               </TabsTrigger>
               <TabsTrigger value="csv" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all" disabled={!hasCsv}>
@@ -484,6 +591,16 @@ const Index = () => {
               ) : (
                 <div className="text-center py-16 text-slate-500">Upload a CSV to view the schedule</div>
               )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="pdf-files" className="animate-fade-in">
+            <div className="surface-card gradient-border-top p-6">
+              <PdfSourceEditorTab
+                pdfFiles={uploadedFiles}
+                previewUrls={pdfPreviewUrls}
+                onUpdateSchedule={handleUpdatePdfSchedule}
+              />
             </div>
           </TabsContent>
 

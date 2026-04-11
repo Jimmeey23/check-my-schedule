@@ -619,7 +619,12 @@ const Index = () => {
           <TabsContent value="side-by-side" className="animate-fade-in">
             <div className="surface-card gradient-border-top p-4">
               {csvClassData && aggregatedPdfClassData ? (
-                <SideBySideViewer csvData={csvClassData} pdfData={aggregatedPdfClassData} locationFilter={sharedLocationFilter} />
+                <SideBySideViewer
+                  csvData={csvClassData}
+                  pdfData={aggregatedPdfClassData}
+                  comparison={comparison}
+                  locationFilter={sharedLocationFilter}
+                />
               ) : (
                 <div className="text-center py-16 text-slate-500">Upload both CSV and PDF files to use the side-by-side viewer</div>
               )}

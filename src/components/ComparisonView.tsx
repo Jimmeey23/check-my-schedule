@@ -8,6 +8,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import type { ComparedClass, ScheduleComparisonResult } from '@/types/schedule';
+import {
+  buildComparisonAlignedRows,
+  DAY_ORDER,
+  getComparisonRowDay,
+  getComparisonRowFocusId,
+  getComparisonRowLocation,
+  getComparisonRowTime,
+  sortComparisonAlignedRows,
+  type ComparisonAlignedRow,
+  type ComparisonSortMode,
+} from '@/lib/comparisonAlignment';
 import { formatMismatchesAsWhatsApp, copyToClipboard } from '@/lib/whatsappFormatter';
 import {
   CheckCircle2,
@@ -37,12 +48,10 @@ interface ComparisonViewProps {
 
 type CompViewMode = 'side-by-side' | 'list' | 'location' | 'issues' | 'summary';
 type StatusFilter = 'all' | 'match' | 'mismatch' | 'missing' | 'extra';
-type SortMode = 'day-time' | 'status-severity' | 'class-name' | 'trainer-name';
+type SortMode = ComparisonSortMode;
 type GroupMode = 'day' | 'location';
 type IssueFilter = 'all' | 'class' | 'trainer' | 'time' | 'location' | 'missing' | 'extra';
 type IssueType = Exclude<IssueFilter, 'all'>;
-
-const DAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 const statusConfig = {
   match: {
@@ -83,13 +92,6 @@ const statusConfig = {
   },
 };
 
-const STATUS_SEVERITY: Record<ComparedClass['status'], number> = {
-  mismatch: 0,
-  missing: 1,
-  extra: 2,
-  match: 3,
-};
-
 const ISSUE_LABELS: Record<IssueType, string> = {
   class: 'Class',
   trainer: 'Trainer',
@@ -101,11 +103,12 @@ const ISSUE_LABELS: Record<IssueType, string> = {
 
 const ISSUE_PRIORITY: IssueType[] = ['class', 'trainer', 'time', 'location', 'missing', 'extra'];
 
-interface AlignedRow {
-  pdfClass: ComparedClass | null;
-  csvClass: ComparedClass | null;
-  status: ComparedClass['status'];
-}
+const STATUS_SEVERITY: Record<ComparedClass['status'], number> = {
+  mismatch: 0,
+  missing: 1,
+  extra: 2,
+  match: 3,
+};
 
 interface FocusTarget {
   id: string;
@@ -128,23 +131,6 @@ function getDisplayName(cls: ComparedClass | null): string {
   return cls.normalizedClassName?.replace('Studio ', '') || cls.className;
 }
 
-function getRowDay(row: AlignedRow): string {
-  return row.pdfClass?.day || row.csvClass?.day || '';
-}
-
-function getRowTime(row: AlignedRow): string {
-  return row.pdfClass?.normalizedTime || row.csvClass?.normalizedTime || '';
-}
-
-function getRowLocation(row: AlignedRow): string {
-  return row.pdfClass?.normalizedLocation || row.csvClass?.normalizedLocation || '';
-}
-
-function getRowFocusId(row: AlignedRow): string | null {
-  if (row.status === 'extra') return row.csvClass?.id || null;
-  return row.pdfClass?.id || row.csvClass?.id || null;
-}
-
 function classMatchesIssueFilter(cls: ComparedClass, issueFilter: IssueFilter): boolean {
   if (issueFilter === 'all') return true;
   if (issueFilter === 'missing') return cls.status === 'missing';
@@ -159,7 +145,7 @@ function classMatchesIssueFilter(cls: ComparedClass, issueFilter: IssueFilter): 
   return true;
 }
 
-function getIssueTypesForRow(row: AlignedRow): IssueType[] {
+function getIssueTypesForRow(row: ComparisonAlignedRow): IssueType[] {
   if (row.status === 'missing') return ['missing'];
   if (row.status === 'extra') return ['extra'];
 
@@ -218,69 +204,6 @@ function sortComparedClasses(classes: ComparedClass[], sortMode: SortMode): Comp
     if (daySort !== 0) return daySort;
     return timeSort;
   });
-}
-
-function sortAlignedRows(rows: AlignedRow[], sortMode: SortMode): AlignedRow[] {
-  return [...rows].sort((a, b) => {
-    const daySort = DAY_ORDER.indexOf(getRowDay(a)) - DAY_ORDER.indexOf(getRowDay(b));
-    const timeSort = getRowTime(a).localeCompare(getRowTime(b));
-
-    if (sortMode === 'day-time') {
-      if (daySort !== 0) return daySort;
-      return timeSort;
-    }
-
-    if (sortMode === 'status-severity') {
-      const severitySort = STATUS_SEVERITY[a.status] - STATUS_SEVERITY[b.status];
-      if (severitySort !== 0) return severitySort;
-      if (daySort !== 0) return daySort;
-      return timeSort;
-    }
-
-    if (sortMode === 'class-name') {
-      const classSort = getDisplayName(a.pdfClass || a.csvClass).toLowerCase().localeCompare(getDisplayName(b.pdfClass || b.csvClass).toLowerCase());
-      if (classSort !== 0) return classSort;
-      if (daySort !== 0) return daySort;
-      return timeSort;
-    }
-
-    const trainerSort = (a.pdfClass?.normalizedTrainer || a.csvClass?.normalizedTrainer || '').toLowerCase().localeCompare(
-      (b.pdfClass?.normalizedTrainer || b.csvClass?.normalizedTrainer || '').toLowerCase()
-    );
-    if (trainerSort !== 0) return trainerSort;
-    if (daySort !== 0) return daySort;
-    return timeSort;
-  });
-}
-
-function buildAlignedRows(pdfClasses: ComparedClass[], csvClasses: ComparedClass[]): AlignedRow[] {
-  const rows: AlignedRow[] = [];
-  const usedCsvIds = new Set<string>();
-
-  for (const pdfCls of pdfClasses) {
-    if (pdfCls.status === 'match' || pdfCls.status === 'mismatch') {
-      const csvMatch = csvClasses.find(c => c.id === pdfCls.matchedWith?.id);
-      if (csvMatch) {
-        usedCsvIds.add(csvMatch.id);
-        rows.push({ pdfClass: pdfCls, csvClass: csvMatch, status: pdfCls.status });
-      } else {
-        rows.push({ pdfClass: pdfCls, csvClass: null, status: pdfCls.status });
-      }
-      continue;
-    }
-
-    if (pdfCls.status === 'missing') {
-      rows.push({ pdfClass: pdfCls, csvClass: null, status: 'missing' });
-    }
-  }
-
-  for (const csvCls of csvClasses) {
-    if (!usedCsvIds.has(csvCls.id) && csvCls.status === 'extra') {
-      rows.push({ pdfClass: null, csvClass: csvCls, status: 'extra' });
-    }
-  }
-
-  return sortAlignedRows(rows, 'day-time');
 }
 
 function StatCard({
@@ -442,8 +365,8 @@ export function ComparisonView({ comparison, locationFilter: sharedLocationFilte
     };
   }, [activeLocationFilter, comparison, dayFilter, focusIssuesOnly, issueFilter, searchQuery, sortMode, statusFilter]);
 
-  const alignedRows = useMemo(() => buildAlignedRows(filteredPdf, filteredCsv), [filteredPdf, filteredCsv]);
-  const sortedAlignedRows = useMemo(() => sortAlignedRows(alignedRows, sortMode), [alignedRows, sortMode]);
+  const alignedRows = useMemo(() => buildComparisonAlignedRows(filteredPdf, filteredCsv), [filteredPdf, filteredCsv]);
+  const sortedAlignedRows = useMemo(() => sortComparisonAlignedRows(alignedRows, sortMode), [alignedRows, sortMode]);
 
   const inViewSummary = useMemo(() => {
     const totals = {
@@ -465,7 +388,7 @@ export function ComparisonView({ comparison, locationFilter: sharedLocationFilte
   const visibleLocations = useMemo(() => {
     const set = new Set<string>();
     sortedAlignedRows.forEach(row => {
-      const loc = getRowLocation(row);
+      const loc = getComparisonRowLocation(row);
       if (loc) set.add(loc);
     });
     return Array.from(set).sort();
@@ -476,7 +399,7 @@ export function ComparisonView({ comparison, locationFilter: sharedLocationFilte
 
     for (const row of sortedAlignedRows) {
       if (row.status === 'match') continue;
-      const focusId = getRowFocusId(row);
+      const focusId = getComparisonRowFocusId(row);
       const source = row.status === 'extra' ? row.csvClass : row.pdfClass;
       if (!focusId || !source) continue;
 
@@ -804,18 +727,18 @@ function SideBySideView({
   compactMode,
   activeFocusId,
 }: {
-  rows: AlignedRow[];
+  rows: ComparisonAlignedRow[];
   groupMode: GroupMode;
   compactMode: boolean;
   activeFocusId: string | null;
 }) {
   const groupedRows = useMemo(() => {
-    const map = new Map<string, AlignedRow[]>();
+    const map = new Map<string, ComparisonAlignedRow[]>();
 
     for (const row of rows) {
       const key = groupMode === 'location'
-        ? getRowLocation(row) || 'Unspecified Location'
-        : getRowDay(row) || 'Unknown Day';
+        ? getComparisonRowLocation(row) || 'Unspecified Location'
+        : getComparisonRowDay(row) || 'Unknown Day';
 
       const bucket = map.get(key) || [];
       bucket.push(row);
@@ -832,7 +755,7 @@ function SideBySideView({
 
     return entries.map(([label, grouped]) => ({
       label,
-      rows: sortAlignedRows(grouped, 'day-time'),
+      rows: sortComparisonAlignedRows(grouped, 'day-time'),
     }));
   }, [groupMode, rows]);
 
@@ -871,7 +794,7 @@ function SideBySideView({
 
             <div className="divide-y divide-border/50">
               {group.rows.map((row, idx) => {
-                const focusId = getRowFocusId(row);
+                const focusId = getComparisonRowFocusId(row);
                 const isIssue = row.status !== 'match';
                 const isActive = Boolean(activeFocusId && focusId && activeFocusId === focusId);
 
@@ -902,7 +825,7 @@ function SideBySideView({
   );
 }
 
-function FlatListView({ rows, compactMode, activeFocusId }: { rows: AlignedRow[]; compactMode: boolean; activeFocusId: string | null }) {
+function FlatListView({ rows, compactMode, activeFocusId }: { rows: ComparisonAlignedRow[]; compactMode: boolean; activeFocusId: string | null }) {
   if (rows.length === 0) {
     return <EmptyState label="No classes found for selected filters" />;
   }
@@ -927,7 +850,7 @@ function FlatListView({ rows, compactMode, activeFocusId }: { rows: AlignedRow[]
           {rows.map((row, idx) => {
             const cfg = statusConfig[row.status];
             const Icon = cfg.icon;
-            const focusId = getRowFocusId(row);
+            const focusId = getComparisonRowFocusId(row);
             const isIssue = row.status !== 'match';
             const isActive = Boolean(activeFocusId && focusId && activeFocusId === focusId);
             const issueLabels = row.status === 'match'
@@ -952,9 +875,9 @@ function FlatListView({ rows, compactMode, activeFocusId }: { rows: AlignedRow[]
                     <span className={cn('text-xs font-medium', cfg.text)}>{cfg.label}</span>
                   </div>
                 </td>
-                <td className="p-2.5 text-xs">{getRowDay(row)}</td>
-                <td className="p-2.5 font-medium text-xs">{formatTime24to12(getRowTime(row)) || '—'}</td>
-                <td className="p-2.5 text-xs text-slate-600">{getRowLocation(row) || '—'}</td>
+                <td className="p-2.5 text-xs">{getComparisonRowDay(row)}</td>
+                <td className="p-2.5 font-medium text-xs">{formatTime24to12(getComparisonRowTime(row)) || '—'}</td>
+                <td className="p-2.5 text-xs text-slate-600">{getComparisonRowLocation(row) || '—'}</td>
                 <td className={cn('p-2.5 text-xs font-medium', row.pdfClass?.differences?.className && 'text-amber-900')}>
                   {getDisplayName(row.pdfClass)}
                 </td>
@@ -998,7 +921,7 @@ function LocationCompView({
   compactMode,
   activeFocusId,
 }: {
-  rows: AlignedRow[];
+  rows: ComparisonAlignedRow[];
   locations: string[];
   compactMode: boolean;
   activeFocusId: string | null;
@@ -1010,8 +933,8 @@ function LocationCompView({
   return (
     <div className="space-y-6">
       {locations.map(location => {
-        const locationRows = rows.filter(row => getRowLocation(row) === location);
-        const sortedRows = sortAlignedRows(locationRows, 'day-time');
+        const locationRows = rows.filter(row => getComparisonRowLocation(row) === location);
+        const sortedRows = sortComparisonAlignedRows(locationRows, 'day-time');
         const matches = sortedRows.filter(row => row.status === 'match').length;
         const rate = sortedRows.length > 0 ? Math.round((matches / sortedRows.length) * 100) : 0;
 
@@ -1041,7 +964,7 @@ function LocationCompView({
 
             <div className="divide-y divide-border/50">
               {sortedRows.map((row, idx) => {
-                const focusId = getRowFocusId(row);
+                const focusId = getComparisonRowFocusId(row);
                 const isIssue = row.status !== 'match';
                 const isActive = Boolean(activeFocusId && focusId && activeFocusId === focusId);
 
@@ -1079,13 +1002,13 @@ function IssueBoardView({
   compactMode,
   activeFocusId,
 }: {
-  rows: AlignedRow[];
+  rows: ComparisonAlignedRow[];
   issueFilter: IssueFilter;
   compactMode: boolean;
   activeFocusId: string | null;
 }) {
   const grouped = useMemo(() => {
-    const map = new Map<IssueType, AlignedRow[]>();
+    const map = new Map<IssueType, ComparisonAlignedRow[]>();
 
     if (issueFilter === 'all') {
       for (const row of rows) {
@@ -1134,7 +1057,7 @@ function IssueBoardView({
 
           <div className="divide-y divide-border/50">
             {section.rows.map((row, idx) => {
-              const focusId = getRowFocusId(row);
+              const focusId = getComparisonRowFocusId(row);
               const isActive = Boolean(activeFocusId && focusId && activeFocusId === focusId);
 
               return (
@@ -1145,12 +1068,12 @@ function IssueBoardView({
                 >
                   <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 mb-2">
                     <Badge variant="outline" className="text-[10px] h-5 px-1.5 bg-white/70">
-                      {getRowDay(row)}
+                      {getComparisonRowDay(row)}
                     </Badge>
                     <Badge variant="outline" className="text-[10px] h-5 px-1.5 bg-white/70">
-                      {formatTime24to12(getRowTime(row)) || '—'}
+                      {formatTime24to12(getComparisonRowTime(row)) || '—'}
                     </Badge>
-                    <span className="text-[11px]">{getRowLocation(row) || 'No location'}</span>
+                    <span className="text-[11px]">{getComparisonRowLocation(row) || 'No location'}</span>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">

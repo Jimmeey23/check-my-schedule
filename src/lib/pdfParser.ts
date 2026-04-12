@@ -29,6 +29,15 @@ const TEACHER_ENTRIES: TeacherEntry[] = knownTeachers.map(teacher => ({
   compactFirstName: compactText(teacher.split(' ')[0] || ''),
 }));
 
+const THEME_MARKER_REGEX = /[⚡✨⭐🔥💥🎵🎶]\uFE0F?\s*/u;
+const KNOWN_THEME_PATTERNS: Array<{ pattern: RegExp; value: string }> = [
+  { pattern: /\bWEAR\s+BLUE\b/i, value: 'Wear Blue' },
+  { pattern: /\bGLUTE\s+CAMP\b/i, value: 'Glute Camp' },
+  { pattern: /\bTAYLOR\s+SWIFT\s+VS\s+SOMBER\b/i, value: 'Taylor Swift vs Somber' },
+  { pattern: /\bDANCE\s+RECOVERY\b/i, value: 'Dance Recovery' },
+  { pattern: /\bSEAN\s+PAUL\s+(?:&|AND)\s+FRIENDS\b/i, value: 'Sean Paul & Friends' },
+];
+
 // Set up worker from CDN
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
@@ -42,6 +51,205 @@ function normalizeExtractedText(text: string): string {
     .replace(/\s+([),.;:!?%\]])/g, '$1')
     .replace(/([([\-])\s+/g, '$1')
     .trim();
+}
+
+function formatThemeText(text: string): string {
+  const trimmed = normalizeExtractedText(
+    text
+      .replace(/[⚡✨⭐🔥💥🎵🎶]\uFE0F?/gu, ' ')
+      .replace(/^[\s,;:|–—-]+/, '')
+      .trim()
+  );
+  if (!trimmed) return '';
+
+  for (const { pattern, value } of KNOWN_THEME_PATTERNS) {
+    if (pattern.test(trimmed)) return value;
+  }
+
+  if (/[a-z]/.test(trimmed)) return trimmed;
+
+  return trimmed
+    .toLowerCase()
+    .replace(/\bvs\b/g, 'vs')
+    .replace(/\b[a-z]/g, char => char.toUpperCase());
+}
+
+function findKnownTheme(text: string): string | null {
+  const cleaned = normalizeExtractedText(text);
+  if (!cleaned) return null;
+
+  for (const { pattern, value } of KNOWN_THEME_PATTERNS) {
+    if (pattern.test(cleaned)) return value;
+  }
+
+  return null;
+}
+
+function extractTrailingTextAfterTrainer(text: string, trainer: string | null | undefined): string {
+  if (!trainer) return '';
+
+  const cleaned = normalizeExtractedText(text);
+  const normalizedTrainer = normalizeTrainer(trainer);
+  const variants = Array.from(
+    new Set(
+      [
+        trainer,
+        normalizedTrainer,
+        normalizedTrainer.split(' ')[0] || '',
+      ]
+        .map(value => normalizeExtractedText(value))
+        .filter(Boolean)
+    )
+  );
+
+  const lower = cleaned.toLowerCase();
+  let bestTrailing = '';
+
+  for (const variant of variants) {
+    const variantLower = variant.toLowerCase();
+    const matchIndex = lower.lastIndexOf(variantLower);
+    if (matchIndex < 0) continue;
+
+    const trailing = normalizeExtractedText(cleaned.slice(matchIndex + variant.length));
+    if (trailing.length > bestTrailing.length) {
+      bestTrailing = trailing;
+    }
+  }
+
+  return bestTrailing;
+}
+
+function looksLikeTheme(text: string): boolean {
+  const cleaned = formatThemeText(text);
+  if (!cleaned) return false;
+  if (!/[A-Za-z]/.test(cleaned)) return false;
+  if (matchClassName(cleaned) || matchTrainer(cleaned)) return false;
+
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  return words.length >= 2 || KNOWN_THEME_PATTERNS.some(({ value }) => value === cleaned);
+}
+
+function extractTheme(text: string, trainer: string | null | undefined): string | null {
+  const cleaned = normalizeExtractedText(text);
+  if (!cleaned) return null;
+
+  const markerIndex = cleaned.search(THEME_MARKER_REGEX);
+  if (markerIndex >= 0) {
+    const themeAfterMarker = formatThemeText(cleaned.slice(markerIndex));
+    return themeAfterMarker || null;
+  }
+
+  const knownTheme = findKnownTheme(cleaned);
+  if (knownTheme) return knownTheme;
+
+  const trailingAfterTrainer = extractTrailingTextAfterTrainer(cleaned, trainer);
+  if (looksLikeTheme(trailingAfterTrainer)) {
+    return formatThemeText(trailingAfterTrainer);
+  }
+
+  return null;
+}
+
+function looksLikeThemeFragment(text: string): boolean {
+  const cleaned = normalizeExtractedText(text);
+  if (!cleaned) return false;
+  if (TIME_PATTERN.test(cleaned) || INLINE_TIME_PATTERN.test(cleaned)) return false;
+  if (DAY_PATTERNS.some(pattern => pattern.regex.test(cleaned) && cleaned.length < 30)) return false;
+  if (matchClassName(cleaned) || matchTrainer(cleaned)) return false;
+  if (THEME_MARKER_REGEX.test(cleaned)) return true;
+  if (/^[()\s]+$/.test(cleaned)) return false;
+  if (findKnownTheme(cleaned)) return true;
+  return /^[([]?[A-Za-z&\s]+[)]?$/.test(cleaned) && cleaned.length <= 40;
+}
+
+function mergeThemeParts(...parts: Array<string | null | undefined>): string | null {
+  const merged = parts
+    .map(part => normalizeExtractedText(part || ''))
+    .filter(Boolean)
+    .join(' ');
+
+  const formatted = formatThemeText(merged);
+  return formatted || null;
+}
+
+function parseClassLine(
+  line: string,
+  continuationLine?: string
+): Pick<ScheduleClass, 'time' | 'className' | 'trainer' | 'level' | 'theme'> | null {
+  const inlineTime = line.match(TIME_PATTERN) || line.match(INLINE_TIME_PATTERN);
+  if (!inlineTime) return null;
+
+  const time = inlineTime[0].trim();
+  const timeIndex = line.indexOf(inlineTime[0]);
+  const rest = normalizeExtractedText(line.slice(timeIndex + inlineTime[0].length).trim());
+  const combinedRest = continuationLine ? `${rest} ${normalizeExtractedText(continuationLine)}` : rest;
+
+  let className: string | null = null;
+  let trainer: string | null = null;
+
+  const parts = rest.split(/\s{2,}|\t|[-–|]/);
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    if (!className) {
+      className = matchClassName(trimmed);
+      if (className) continue;
+    }
+    if (!trainer) {
+      trainer = matchTrainer(trimmed);
+      if (trainer) continue;
+    }
+  }
+
+  className = chooseMoreSpecificClassName(className, matchClassName(rest));
+  className = chooseMoreSpecificClassName(className, matchClassName(combinedRest));
+
+  if (!className) {
+    const words = rest.split(/\s+/);
+    for (let w = 0; w < words.length && !className; w++) {
+      for (let len = Math.min(5, words.length - w); len > 0; len--) {
+        const candidate = words.slice(w, w + len).join(' ');
+        className = matchClassName(candidate);
+        if (className) break;
+      }
+    }
+  }
+
+  if (!className && continuationLine) {
+    const words = combinedRest.split(/\s+/);
+    for (let w = 0; w < words.length && !className; w++) {
+      for (let len = Math.min(8, words.length - w); len > 0; len--) {
+        const candidate = words.slice(w, w + len).join(' ');
+        className = matchClassName(candidate);
+        if (className) break;
+      }
+    }
+  }
+
+  if (!trainer) {
+    const words = combinedRest.split(/\s+/);
+    for (const word of words) {
+      trainer = matchTrainer(word);
+      if (trainer) break;
+    }
+  }
+
+  if (!trainer && continuationLine) {
+    trainer = matchTrainer(continuationLine);
+  }
+
+  if (!time || (!className && !trainer)) return null;
+
+  const directTheme = extractTheme(rest, trainer);
+  const normalizedName = className || rest;
+
+  return {
+    time,
+    className: className || rest,
+    trainer: trainer || 'TBD',
+    level: getClassLevel(normalizedName),
+    theme: directTheme || undefined,
+  };
 }
 
 function isPotentialContinuationLine(line: string): boolean {
@@ -169,6 +377,23 @@ interface TextCluster {
   y: number;
   width: number;
   height: number;
+}
+
+interface RenderedPageSample {
+  width: number;
+  height: number;
+  imageData: ImageData;
+}
+
+interface RGBColor {
+  r: number;
+  g: number;
+  b: number;
+}
+
+interface ThemeLegendEntry {
+  theme: string;
+  color: RGBColor;
 }
 
 export interface PdfTemplateRect {
@@ -730,94 +955,31 @@ function parseDayClasses(lines: string[], dayIndex: number): ScheduleClass[] {
     // Skip day headers
     if (DAY_PATTERNS.some(p => p.regex.test(line) && line.length < 30)) continue;
 
-    // Find time pattern
-    const timeMatch = line.match(TIME_PATTERN);
-    if (!timeMatch) {
-      const inlineTime = line.match(INLINE_TIME_PATTERN);
-      if (!inlineTime) continue;
-      const time = inlineTime[0].trim();
-      const rest = normalizeExtractedText(line.slice(line.indexOf(inlineTime[0]) + inlineTime[0].length).trim());
-      const continuationLine = isPotentialContinuationLine(lines[i + 1] || '') ? normalizeExtractedText(lines[i + 1]) : '';
-      const combinedRest = continuationLine ? `${rest} ${continuationLine}` : rest;
+    if (!findTimeInLine(line)) continue;
 
-      let className = chooseMoreSpecificClassName(matchClassName(rest), matchClassName(combinedRest));
-      let trainer = matchTrainer(combinedRest) || matchTrainer(rest);
+    const rawContinuation = isPotentialContinuationLine(lines[i + 1] || '') ? normalizeExtractedText(lines[i + 1]) : '';
+    const previewWithoutContinuation = parseClassLine(line);
+    const shouldConsumeContinuation = Boolean(
+      rawContinuation && (
+        !previewWithoutContinuation ||
+        previewWithoutContinuation.trainer === 'TBD' ||
+        !previewWithoutContinuation.className
+      )
+    );
 
-      if (time && (className || trainer)) {
-        const normalizedName = className || rest;
-        classes.push({
-          id: `pdf-${dayIndex}-${classCounter++}`,
-          time,
-          className: className || rest,
-          trainer: trainer || 'TBD',
-          level: getClassLevel(normalizedName),
-        });
-      }
-      continue;
-    }
+    const parsed = parseClassLine(
+      line,
+      shouldConsumeContinuation ? rawContinuation : undefined
+    );
 
-    const time = timeMatch ? timeMatch[0].trim() : '';
-    const rest = timeMatch ? normalizeExtractedText(line.slice(timeMatch[0].length).trim()) : line;
-    const continuationLine = isPotentialContinuationLine(lines[i + 1] || '') ? normalizeExtractedText(lines[i + 1]) : '';
-    const combinedRest = continuationLine ? `${rest} ${continuationLine}` : rest;
-
-    let className: string | null = null;
-    let trainer: string | null = null;
-
-    const parts = rest.split(/\s{2,}|\t|[-–|]/);
-    for (const part of parts) {
-      const trimmed = part.trim();
-      if (!trimmed) continue;
-      if (!className) { className = matchClassName(trimmed); if (className) continue; }
-      if (!trainer) { trainer = matchTrainer(trimmed); if (trainer) continue; }
-    }
-
-    className = chooseMoreSpecificClassName(className, matchClassName(rest));
-    className = chooseMoreSpecificClassName(className, matchClassName(combinedRest));
-
-    if (!className) {
-      const words = rest.split(/\s+/);
-      for (let w = 0; w < words.length && !className; w++) {
-        for (let len = Math.min(5, words.length - w); len > 0; len--) {
-          const candidate = words.slice(w, w + len).join(' ');
-          className = matchClassName(candidate);
-          if (className) break;
-        }
-      }
-    }
-
-    if (!className && continuationLine) {
-      const words = combinedRest.split(/\s+/);
-      for (let w = 0; w < words.length && !className; w++) {
-        for (let len = Math.min(8, words.length - w); len > 0; len--) {
-          const candidate = words.slice(w, w + len).join(' ');
-          className = matchClassName(candidate);
-          if (className) break;
-        }
-      }
-    }
-
-    if (!trainer) {
-      const words = combinedRest.split(/\s+/);
-      for (const word of words) {
-        trainer = matchTrainer(word);
-        if (trainer) break;
-      }
-    }
-
-    if (!trainer && continuationLine) {
-      trainer = matchTrainer(continuationLine);
-    }
-
-    if (time && (className || trainer)) {
-      const normalizedName = className || rest;
+    if (parsed) {
       classes.push({
         id: `pdf-${dayIndex}-${classCounter++}`,
-        time,
-        className: className || rest,
-        trainer: trainer || 'TBD',
-        level: getClassLevel(normalizedName),
+        ...parsed,
       });
+      if (shouldConsumeContinuation) {
+        i += 1;
+      }
     }
   }
 
@@ -1090,12 +1252,340 @@ function parseScheduleFromLines(lines: string[]): DaySchedule[] {
   return daySchedules;
 }
 
+function createSamplingCanvas(width: number, height: number): HTMLCanvasElement | OffscreenCanvas | null {
+  if (typeof OffscreenCanvas !== 'undefined') {
+    return new OffscreenCanvas(width, height);
+  }
+
+  if (typeof document !== 'undefined') {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    return canvas;
+  }
+
+  return null;
+}
+
+async function renderPdfPages(arrayBuffer: ArrayBuffer): Promise<RenderedPageSample[]> {
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+  const pages: RenderedPageSample[] = [];
+
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+    const page = await pdf.getPage(pageNumber);
+    const logicalViewport = page.getViewport({ scale: 1 });
+    const viewport = page.getViewport({ scale: 1.5 });
+    const canvas = createSamplingCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
+    if (!canvas) return [];
+
+    const context = canvas.getContext('2d', { willReadFrequently: true } as CanvasRenderingContext2DSettings);
+    if (!context) return [];
+
+    await page.render({ canvasContext: context as CanvasRenderingContext2D, viewport }).promise;
+    pages.push({
+      width: logicalViewport.width,
+      height: logicalViewport.height,
+      imageData: (context as CanvasRenderingContext2D).getImageData(0, 0, canvas.width, canvas.height),
+    });
+  }
+
+  return pages;
+}
+
+function getPixelColor(imageData: ImageData, x: number, y: number): RGBColor | null {
+  if (x < 0 || y < 0 || x >= imageData.width || y >= imageData.height) return null;
+  const index = (Math.floor(y) * imageData.width + Math.floor(x)) * 4;
+  const alpha = imageData.data[index + 3];
+  if (alpha < 10) return null;
+
+  return {
+    r: imageData.data[index],
+    g: imageData.data[index + 1],
+    b: imageData.data[index + 2],
+  };
+}
+
+function isNearWhite(color: RGBColor): boolean {
+  return color.r > 230 && color.g > 230 && color.b > 230;
+}
+
+function isNearBlack(color: RGBColor): boolean {
+  return color.r < 55 && color.g < 55 && color.b < 55;
+}
+
+function colorDistance(a: RGBColor, b: RGBColor): number {
+  return Math.sqrt((a.r - b.r) ** 2 + (a.g - b.g) ** 2 + (a.b - b.b) ** 2);
+}
+
+function mergeRects(...rects: Array<PdfTemplateRect | null | undefined>): PdfTemplateRect | null {
+  const validRects = rects.filter((rect): rect is PdfTemplateRect => Boolean(rect));
+  if (validRects.length === 0) return null;
+
+  const minX = Math.min(...validRects.map(rect => rect.x));
+  const minY = Math.min(...validRects.map(rect => rect.y));
+  const maxX = Math.max(...validRects.map(rect => rect.x + rect.width));
+  const maxY = Math.max(...validRects.map(rect => rect.y + rect.height));
+
+  return {
+    pageIndex: validRects[0].pageIndex,
+    x: minX,
+    y: minY,
+    width: Math.max(maxX - minX, 1),
+    height: Math.max(maxY - minY, 1),
+  };
+}
+
+function dominantColorInRect(sample: RenderedPageSample, rect: PdfTemplateRect): RGBColor | null {
+  const xScale = sample.imageData.width / sample.width;
+  const yScale = sample.imageData.height / sample.height;
+  const xStart = Math.max(Math.floor(rect.x * xScale), 0);
+  const xEnd = Math.min(Math.ceil((rect.x + rect.width) * xScale), sample.imageData.width - 1);
+  const top = Math.max(Math.floor((sample.height - (rect.y + rect.height)) * yScale), 0);
+  const bottom = Math.min(Math.ceil((sample.height - rect.y) * yScale), sample.imageData.height - 1);
+  const stepX = Math.max(1, Math.floor((xEnd - xStart) / 20));
+  const stepY = Math.max(1, Math.floor((bottom - top) / 6));
+  const buckets = new Map<string, { color: RGBColor; count: number }>();
+
+  for (let y = top; y <= bottom; y += stepY) {
+    for (let x = xStart; x <= xEnd; x += stepX) {
+      const color = getPixelColor(sample.imageData, x, y);
+      if (!color || isNearWhite(color) || isNearBlack(color)) continue;
+
+      const key = `${Math.round(color.r / 8) * 8}-${Math.round(color.g / 8) * 8}-${Math.round(color.b / 8) * 8}`;
+      const bucket = buckets.get(key);
+      if (bucket) {
+        bucket.count += 1;
+      } else {
+        buckets.set(key, { color, count: 1 });
+      }
+    }
+  }
+
+  const best = [...buckets.values()].sort((a, b) => b.count - a.count)[0];
+  return best?.count >= 3 ? best.color : null;
+}
+
+function buildRowHighlightRect(row: PdfTemplateRow): PdfTemplateRect {
+  const merged = mergeRects(row.timeRect, row.classRect, row.trainerRect);
+  if (!merged) return row.classRect;
+
+  return {
+    ...merged,
+    x: Math.max(row.timeRect.x - 4, 0),
+    y: Math.max(merged.y - 3, 0),
+    width: Math.max((merged.x + merged.width + 120) - Math.max(row.timeRect.x - 4, 0), merged.width),
+    height: Math.max(merged.height + 6, 12),
+  };
+}
+
+function countMatchingPixels(sample: RenderedPageSample, rect: PdfTemplateRect, target: RGBColor, tolerance = 42): number {
+  const xScale = sample.imageData.width / sample.width;
+  const yScale = sample.imageData.height / sample.height;
+  const xStart = Math.max(Math.floor(rect.x * xScale), 0);
+  const xEnd = Math.min(Math.ceil((rect.x + rect.width) * xScale), sample.imageData.width - 1);
+  const top = Math.max(Math.floor((sample.height - (rect.y + rect.height)) * yScale), 0);
+  const bottom = Math.min(Math.ceil((sample.height - rect.y) * yScale), sample.imageData.height - 1);
+  const stepX = Math.max(1, Math.floor((xEnd - xStart) / 60));
+  const stepY = Math.max(1, Math.floor((bottom - top) / 8));
+
+  let matches = 0;
+
+  for (let y = top; y <= bottom; y += stepY) {
+    for (let x = xStart; x <= xEnd; x += stepX) {
+      const color = getPixelColor(sample.imageData, x, y);
+      if (!color || isNearWhite(color) || isNearBlack(color)) continue;
+      if (colorDistance(color, target) <= tolerance) {
+        matches += 1;
+      }
+    }
+  }
+
+  return matches;
+}
+
+function detectThemeLegendEntries(lines: PositionedLine[], pageIndex: number, sample: RenderedPageSample): ThemeLegendEntry[] {
+  return lines
+    .filter(line => line.pageIndex === pageIndex)
+    .filter(line => line.y < sample.height * 0.45)
+    .map(line => {
+      const theme = formatThemeText(line.text);
+      if (!looksLikeTheme(theme)) return null;
+
+      const legendRect: PdfTemplateRect = {
+        pageIndex,
+        x: Math.max(line.x - 80, 0),
+        y: line.y,
+        width: Math.min(70, line.x),
+        height: Math.max(line.height, 12),
+      };
+      const color = dominantColorInRect(sample, legendRect);
+      if (!color) return null;
+
+      return { theme, color } satisfies ThemeLegendEntry;
+    })
+    .filter((entry): entry is ThemeLegendEntry => Boolean(entry));
+}
+
+function findThemeByColor(color: RGBColor | null, legendEntries: ThemeLegendEntry[]): string | null {
+  if (!color || legendEntries.length === 0) return null;
+
+  const best = legendEntries
+    .map(entry => ({ entry, distance: colorDistance(color, entry.color) }))
+    .sort((a, b) => a.distance - b.distance)[0];
+
+  return best && best.distance <= 50 ? best.entry.theme : null;
+}
+
+function findThemeByRowHighlight(sample: RenderedPageSample, row: PdfTemplateRow, legendEntries: ThemeLegendEntry[]): string | null {
+  if (legendEntries.length === 0) return null;
+
+  const rowRect = buildRowHighlightRect(row);
+  const best = legendEntries
+    .map(entry => ({
+      entry,
+      score: countMatchingPixels(sample, rowRect, entry.color),
+    }))
+    .sort((a, b) => b.score - a.score)[0];
+
+  return best && best.score >= 8 ? best.entry.theme : null;
+}
+
+function comparableTime(value: string | null | undefined): string {
+  return normalizeTime(value || '') || normalizeExtractedText(value || '').toUpperCase();
+}
+
+function comparableClassName(value: string | null | undefined): string {
+  const normalized = normalizeClassName(value || '');
+  return compactText(normalized || value || '');
+}
+
+function comparableTrainer(value: string | null | undefined): string {
+  const normalized = normalizeTrainer(value || '');
+  return compactText(normalized || value || '');
+}
+
+function scoreThemeRowMatch(scheduleClass: ScheduleClass, row: PdfTemplateRow, classIndex: number, rowIndex: number): number {
+  let score = 0;
+
+  const classTime = comparableTime(scheduleClass.time);
+  const rowTime = comparableTime(row.sourceTime);
+  if (classTime && rowTime) {
+    if (classTime === rowTime) {
+      score += 10;
+    } else {
+      return -1;
+    }
+  }
+
+  const className = comparableClassName(scheduleClass.className);
+  const rowClassName = comparableClassName(row.sourceClassName);
+  if (className && rowClassName) {
+    if (className === rowClassName) {
+      score += 8;
+    } else if (className.includes(rowClassName) || rowClassName.includes(className)) {
+      score += 5;
+    }
+  }
+
+  const trainer = comparableTrainer(scheduleClass.trainer);
+  const rowTrainer = comparableTrainer(row.sourceTrainer);
+  if (trainer && rowTrainer) {
+    if (trainer === rowTrainer) {
+      score += 6;
+    } else if (trainer && rowTrainer && (trainer.includes(rowTrainer) || rowTrainer.includes(trainer))) {
+      score += 3;
+    }
+  }
+
+  score += Math.max(0, 3 - Math.abs(classIndex - rowIndex));
+  return score;
+}
+
+function applyRecoveredThemesToDayClasses(
+  classes: ScheduleClass[],
+  rows: PdfTemplateRow[],
+  rowThemes: string[]
+): void {
+  if (classes.length === 0 || rows.length === 0 || rowThemes.length === 0) return;
+
+  const unusedRows = new Set<number>();
+  rowThemes.forEach((theme, index) => {
+    if (theme) unusedRows.add(index);
+  });
+
+  for (let classIndex = 0; classIndex < classes.length; classIndex++) {
+    const scheduleClass = classes[classIndex];
+    let bestRowIndex = -1;
+    let bestScore = -1;
+
+    for (const rowIndex of unusedRows) {
+      const theme = rowThemes[rowIndex];
+      if (!theme) continue;
+
+      const score = scoreThemeRowMatch(scheduleClass, rows[rowIndex], classIndex, rowIndex);
+      if (score > bestScore) {
+        bestScore = score;
+        bestRowIndex = rowIndex;
+      }
+    }
+
+    if (bestRowIndex >= 0 && bestScore >= 10) {
+      const theme = rowThemes[bestRowIndex];
+      scheduleClass.theme = scheduleClass.theme
+        ? mergeThemeParts(scheduleClass.theme, theme) || scheduleClass.theme
+        : theme;
+      unusedRows.delete(bestRowIndex);
+    }
+  }
+
+  for (let classIndex = 0; classIndex < classes.length; classIndex++) {
+    if (!unusedRows.has(classIndex)) continue;
+    const theme = rowThemes[classIndex];
+    if (!theme) continue;
+
+    const scheduleClass = classes[classIndex];
+    scheduleClass.theme = scheduleClass.theme
+      ? mergeThemeParts(scheduleClass.theme, theme) || scheduleClass.theme
+      : theme;
+    unusedRows.delete(classIndex);
+  }
+}
+
+async function buildColorThemeMap(arrayBuffer: ArrayBuffer, layout: PdfTemplateLayout, pages: TextItem[][]): Promise<Record<string, string[]>> {
+  const renderedPages = await renderPdfPages(arrayBuffer);
+  if (renderedPages.length === 0) return {};
+
+  const legendByPage = renderedPages.map((sample, pageIndex) => {
+    const pageLines = groupIntoPositionedLines(pages[pageIndex] || [], pageIndex);
+    return detectThemeLegendEntries(pageLines, pageIndex, sample);
+  });
+
+  const themesByDay: Record<string, string[]> = {};
+
+  for (const [day, rows] of Object.entries(layout.rowsByDay)) {
+    themesByDay[day] = rows.map(row => {
+      const sample = renderedPages[row.pageIndex];
+      const legendEntries = legendByPage[row.pageIndex] || [];
+      if (!sample || legendEntries.length === 0) return '';
+
+      const stripTheme = findThemeByRowHighlight(sample, row, legendEntries);
+      if (stripTheme) return stripTheme;
+
+      const color = dominantColorInRect(sample, row.classRect);
+      return findThemeByColor(color, legendEntries) || '';
+    });
+  }
+
+  return themesByDay;
+}
+
 // =====================================================================
 // MAIN ENTRY POINT
 // =====================================================================
 
 export async function parsePDF(file: File): Promise<WeekSchedule> {
-  const pages = await extractTextItems(file);
+  const arrayBuffer = await file.arrayBuffer();
+  const pages = await extractTextItemsFromArrayBuffer(arrayBuffer);
 
   // Flatten all items and lines for metadata detection
   const allItems: TextItem[] = pages.flat();
@@ -1207,4 +1697,8 @@ export const __pdfParserTestUtils = {
   parseDayClasses,
   matchClassName,
   matchTrainer,
+  extractTheme,
+  mergeThemeParts,
+  countMatchingPixels,
+  applyRecoveredThemesToDayClasses,
 };

@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import type { PersistedScheduleSnapshot } from '@/lib/persistedScheduleState';
+import type { CleanedPdfSheetRow } from '@/lib/cleanedPdfSheet';
 
 export interface PersistedUploadStateResponse {
   snapshot: PersistedScheduleSnapshot | null;
@@ -11,6 +12,34 @@ const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'eyJhbGciOi
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
+async function invokeEdgeFunctionWithAnonAuth<TResponse>(
+  functionName: string,
+  body?: unknown,
+  method: 'GET' | 'POST' | 'DELETE' = 'POST'
+): Promise<TResponse> {
+  const response = await fetch(`${supabaseUrl}/functions/v1/${functionName}`, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: supabaseKey,
+      Authorization: `Bearer ${supabaseKey}`,
+    },
+    body: method === 'GET' ? undefined : JSON.stringify(body ?? {}),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    throw new Error(errorText || `Edge Function returned ${response.status}`);
+  }
+
+  const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+  if (!contentType.includes('application/json')) {
+    return undefined as TResponse;
+  }
+
+  return response.json() as Promise<TResponse>;
+}
+
 export async function invokeMomenceFunction(startDate?: string, endDate?: string) {
   const { data, error } = await supabase.functions.invoke('momence-sessions', {
     body: { startDate, endDate },
@@ -21,6 +50,35 @@ export async function invokeMomenceFunction(startDate?: string, endDate?: string
   }
 
   return data;
+}
+
+export async function syncCleanedPdfSheet(
+  rows: CleanedPdfSheetRow[],
+  options?: { spreadsheetId?: string; sheetName?: string }
+) {
+  const requestBody = {
+    rows,
+    spreadsheetId: options?.spreadsheetId,
+    sheetName: options?.sheetName,
+  };
+
+  const { data, error } = await supabase.functions.invoke('google-sheets-sync', {
+    body: requestBody,
+  });
+
+  if (!error) {
+    return data;
+  }
+
+  const statusCode = typeof error.context === 'object' && error.context && 'status' in error.context
+    ? Number((error.context as { status?: number }).status)
+    : undefined;
+
+  if (statusCode === 401 || /401|non-2xx status code/i.test(error.message)) {
+    return invokeEdgeFunctionWithAnonAuth('google-sheets-sync', requestBody);
+  }
+
+  throw new Error(error.message);
 }
 
 export async function loadPersistedUploadState(): Promise<PersistedUploadStateResponse> {

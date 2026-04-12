@@ -263,4 +263,43 @@ describe('PDF parser regressions', () => {
     expect(classes[0]?.className).toBe('Studio Strength Lab (Full Body)');
     expect(classes[0]?.trainer).toBe('Raunak Khemuka');
   });
+
+  it('extracts inline theme badges trailing after the trainer', () => {
+    const classes = __pdfParserTestUtils.parseDayClasses([
+      '10:15 AM Cardio Barre - Rohan ⚡️ GLUTE CAMP',
+    ], 0);
+
+    expect(classes).toHaveLength(1);
+    expect(classes[0]?.className).toBe('Studio Cardio Barre');
+    expect(classes[0]?.trainer).toBe('Rohan Dahima');
+    expect(classes[0]?.theme).toBe('Glute Camp');
+  });
+
+  it('does not extract themes from the next line after the trainer', () => {
+    const classes = __pdfParserTestUtils.parseDayClasses([
+      '5:00 PM PowerCycle - Anmol',
+      '⚡️ Taylor Swift Vs Somber',
+    ], 0);
+
+    expect(classes).toHaveLength(1);
+    expect(classes[0]?.className).toBe('Studio PowerCycle');
+    expect(classes[0]?.trainer).toBe('Anmol Sharma');
+    expect(classes[0]?.theme).toBeUndefined();
+  });
+
+  it('does not extract split theme fragments from separate lines', () => {
+    const classes = __pdfParserTestUtils.parseDayClasses([
+      '07:30 AM Mat 57 - Reshma',
+      '(Sean Paul',
+      '08:30 AM PowerCycle - Anmol',
+      'And Friends)',
+    ], 0);
+
+    expect(classes).toHaveLength(2);
+    expect(classes[0]?.className).toBe('Studio Mat 57');
+    expect(classes[0]?.theme).toBeUndefined();
+    expect(classes[1]?.className).toBe('Studio PowerCycle');
+    expect(classes[1]?.trainer).toBe('Anmol Sharma');
+    expect(classes[1]?.theme).toBeUndefined();
+  });
 });

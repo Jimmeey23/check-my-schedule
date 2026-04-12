@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { readCSVFile } from '@/lib/csvParser';
 import { parsePDF, parsePDFToClassData, scheduleToPdfClassData } from '@/lib/pdfParser';
+import { buildCleanedPdfSheetRows, CLEANED_PDF_SHEET_NAME } from '@/lib/cleanedPdfSheet';
 import { normalizeSchedule, compareSchedules, normalizeLocation } from '@/lib/normalizers';
 import { LOCATION_QUERY_PARAM, normalizeLocationFilterValue, updateLocationSearchParams } from '@/lib/urlLocationFilter';
 import {
@@ -26,9 +27,10 @@ import {
   shouldRestorePersistedScheduleSnapshot,
 } from '@/lib/persistedScheduleState';
 import type { UploadedFile, WeekSchedule, ScheduleComparisonResult, NormalizedClass, ClassData, PdfClassData } from '@/types/schedule';
-import { clearPersistedUploadState, deletePersistedPdf, invokeMomenceFunction, loadPersistedUploadState, savePersistedUploadState, uploadPersistedPdf, urlLooksLikePdf } from '@/lib/supabaseClient';
+import { clearPersistedUploadState, deletePersistedPdf, invokeMomenceFunction, loadPersistedUploadState, savePersistedUploadState, syncCleanedPdfSheet, uploadPersistedPdf, urlLooksLikePdf } from '@/lib/supabaseClient';
 import { type MomenceClassData } from '@/types/momence';
 import { parseMomenceSessions } from '@/components/MomenceTab';
+import { toast } from '@/hooks/use-toast';
 
 function revokePreviewUrl(url?: string) {
   if (url?.startsWith('blob:')) {
@@ -50,6 +52,7 @@ const Index = () => {
   const [momenceError, setMomenceError] = useState<string | null>(null);
   const [persistenceReady, setPersistenceReady] = useState(false);
   const pdfPreviewUrlsRef = useRef<Record<string, string>>({});
+  const pdfSchedulesRef = useRef<Map<string, WeekSchedule>>(new Map());
 
   const sharedLocationFilter = useMemo(
     () => normalizeLocationFilterValue(searchParams.get(LOCATION_QUERY_PARAM)),
@@ -213,6 +216,10 @@ const Index = () => {
   }, [pdfPreviewUrls]);
 
   useEffect(() => {
+    pdfSchedulesRef.current = pdfSchedules;
+  }, [pdfSchedules]);
+
+  useEffect(() => {
     return () => {
       Object.values(pdfPreviewUrlsRef.current).forEach(url => revokePreviewUrl(url));
     };
@@ -244,6 +251,23 @@ const Index = () => {
 
     return () => window.clearTimeout(timeoutId);
   }, [csvClassData, csvSchedule, pdfClassDataByLocation, pdfSchedules, persistenceReady, uploadedFiles]);
+
+  const syncPdfSchedulesToSheet = useCallback(async (schedules: Iterable<WeekSchedule>) => {
+    try {
+      await syncCleanedPdfSheet(buildCleanedPdfSheetRows(schedules), {
+        sheetName: CLEANED_PDF_SHEET_NAME,
+      });
+    } catch (error) {
+      console.error('Failed to sync parsed PDF rows to Google Sheets.', error);
+      toast({
+        title: 'Cleaned-PDF sync failed',
+        description: error instanceof Error
+          ? error.message
+          : 'The PDF was parsed locally, but the spreadsheet could not be updated.',
+        variant: 'destructive',
+      });
+    }
+  }, []);
 
   const handleUpload = useCallback(async (file: File, type: 'pdf' | 'csv') => {
     const newFile: UploadedFile = {
@@ -321,12 +345,17 @@ const Index = () => {
           ...f, status: 'completed' as const, data: schedule, location, storagePath
         } : f));
 
+        const nextPdfSchedules = new Map(pdfSchedulesRef.current);
+        nextPdfSchedules.set(location, schedule);
+
         setPdfSchedules(prev => {
           const next = new Map(prev);
           next.set(location, schedule);
           return next;
         });
-        setActiveTab('side-by-side');
+
+        void syncPdfSchedulesToSheet(nextPdfSchedules.values());
+        setActiveTab('pdf-files');
       }
     } catch (error) {
       console.error('File processing error:', error);
@@ -359,6 +388,11 @@ const Index = () => {
           next.delete(file.location!);
           return next;
         });
+
+        const nextPdfSchedules = new Map(pdfSchedulesRef.current);
+        nextPdfSchedules.delete(file.location!);
+        void syncPdfSchedulesToSheet(nextPdfSchedules.values());
+
         setPdfClassDataByLocation(prev => {
           const next = new Map(prev);
           next.delete(file.location!);
@@ -382,10 +416,11 @@ const Index = () => {
     setPdfClassDataByLocation(new Map());
     setPdfPreviewUrls({});
     setActiveTab('upload');
+    void syncPdfSchedulesToSheet([]);
     clearPersistedUploadState().catch(error => {
       console.error('Failed to clear persisted upload state', error);
     });
-  }, []);
+  }, [syncPdfSchedulesToSheet]);
 
   const handleUpdatePdfSchedule = useCallback((fileId: string, updatedSchedule: WeekSchedule) => {
     const targetFile = uploadedFiles.find(file => file.id === fileId && file.type === 'pdf');
@@ -414,7 +449,12 @@ const Index = () => {
       next.set(nextLocation, nextPdfClassData);
       return next;
     });
-  }, [uploadedFiles]);
+
+    const nextPdfSchedules = new Map(pdfSchedulesRef.current);
+    if (previousLocation) nextPdfSchedules.delete(previousLocation);
+    nextPdfSchedules.set(nextLocation, updatedSchedule);
+    void syncPdfSchedulesToSheet(nextPdfSchedules.values());
+  }, [syncPdfSchedulesToSheet, uploadedFiles]);
 
   const fetchMomenceSessions = useCallback(async (startDate?: string, endDate?: string) => {
     setMomenceLoading(true);

@@ -4,7 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UploadedFile, WeekSchedule } from '@/types/schedule';
 
 const extractPdfTemplateLayoutFromUrlMock = vi.fn();
-const buildSchedulePdfBlobMock = vi.fn(async (_schedule?: unknown, _sourceName?: unknown, _options?: unknown) => new Blob(['pdf'], { type: 'application/pdf' }));
+const exportScheduleAsPdfMock = vi.fn();
+const exportScheduleAsCsvMock = vi.fn();
 
 vi.mock('pdfjs-dist', () => ({
   version: '4.9.155',
@@ -30,9 +31,8 @@ vi.mock('@/lib/scheduleExport', async () => {
   const actual = await vi.importActual<typeof import('@/lib/scheduleExport')>('@/lib/scheduleExport');
   return {
     ...actual,
-    buildSchedulePdfBlob: (schedule: unknown, sourceName: unknown, options?: unknown) => buildSchedulePdfBlobMock(schedule, sourceName, options),
-    exportScheduleAsCsv: vi.fn(),
-    exportScheduleAsPdf: vi.fn(),
+    exportScheduleAsCsv: (...args: unknown[]) => exportScheduleAsCsvMock(...args),
+    exportScheduleAsPdf: (...args: unknown[]) => exportScheduleAsPdfMock(...args),
   };
 });
 
@@ -59,6 +59,7 @@ function createSchedule(): WeekSchedule {
             className: 'Studio Barre 57',
             trainer: 'Reshma Sharma',
             location: 'Kemps',
+            theme: 'Sean Paul & Friends',
           },
         ],
       },
@@ -126,8 +127,8 @@ function renderHarness() {
 describe('PdfSourceEditorTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
     extractPdfTemplateLayoutFromUrlMock.mockResolvedValue(createLayout());
-    buildSchedulePdfBlobMock.mockResolvedValue(new Blob(['pdf'], { type: 'application/pdf' }));
     vi.stubGlobal('fetch', vi.fn(async () => ({
       ok: true,
       arrayBuffer: async () => new ArrayBuffer(8),
@@ -142,12 +143,10 @@ describe('PdfSourceEditorTab', () => {
   it('updates the matching schedule class when an inline time field is edited', async () => {
     const { onUpdate } = renderHarness();
 
-    const overlay = await screen.findByTestId('overlay-Monday-0-time');
-    fireEvent.doubleClick(overlay);
-
-    const editor = await screen.findByTestId('inline-editor-file-1:Monday:0:time');
-    fireEvent.change(editor, { target: { value: '8:00 AM' } });
-    fireEvent.keyDown(editor, { key: 'Enter' });
+    const field = await screen.findByTestId('template-MONDAY-0-time');
+    field.textContent = '8:00 AM';
+    fireEvent.input(field);
+    fireEvent.blur(field);
 
     await waitFor(() => {
       expect(onUpdate).toHaveBeenCalled();
@@ -157,15 +156,22 @@ describe('PdfSourceEditorTab', () => {
     expect(updatedSchedule.days[0]?.classes[0]?.time).toBe('8:00 AM');
   });
 
-  it('parses a combined class-line edit into class name and trainer', async () => {
+  it('updates class and theme fields inline and shows only the trainer first name in preview', async () => {
     const { onUpdate } = renderHarness();
 
-    const overlay = await screen.findByTestId('overlay-Monday-0-classLine');
-    fireEvent.doubleClick(overlay);
+    const trainerField = await screen.findByTestId('template-MONDAY-0-trainer');
+    expect(trainerField).toHaveTextContent('Reshma');
+    expect(trainerField).not.toHaveTextContent('Sharma');
 
-    const editor = await screen.findByTestId('inline-editor-file-1:Monday:0:classLine');
-    fireEvent.change(editor, { target: { value: 'Studio Cardio Barre - Raunak' } });
-    fireEvent.keyDown(editor, { key: 'Enter' });
+    const classField = await screen.findByTestId('template-MONDAY-0-class');
+    classField.textContent = 'Studio Cardio Barre';
+    fireEvent.input(classField);
+    fireEvent.blur(classField);
+
+    const themeField = await screen.findByTestId('template-MONDAY-0-theme');
+    themeField.textContent = 'Glute Camp';
+    fireEvent.input(themeField);
+    fireEvent.blur(themeField);
 
     await waitFor(() => {
       expect(onUpdate).toHaveBeenCalled();
@@ -173,81 +179,55 @@ describe('PdfSourceEditorTab', () => {
 
     const updatedSchedule = onUpdate.mock.calls.at(-1)?.[1] as WeekSchedule;
     expect(updatedSchedule.days[0]?.classes[0]?.className).toBe('Studio Cardio Barre');
-    expect(updatedSchedule.days[0]?.classes[0]?.trainer).toBe('Raunak');
+    expect(updatedSchedule.days[0]?.classes[0]?.theme).toBe('Glute Camp');
   });
 
-  it('regenerates the live PDF preview after inline edits are committed', async () => {
+  it('exports the edited schedule with original PDF mapping when available', async () => {
     renderHarness();
 
-    await screen.findByTestId('overlay-Monday-0-time');
-    expect(buildSchedulePdfBlobMock).not.toHaveBeenCalled();
-
-    const initialCallCount = buildSchedulePdfBlobMock.mock.calls.length;
-    const overlay = screen.getByTestId('overlay-Monday-0-time');
-    fireEvent.doubleClick(overlay);
-
-    const editor = await screen.findByTestId('inline-editor-file-1:Monday:0:time');
-    fireEvent.change(editor, { target: { value: '8:10 AM' } });
-    fireEvent.keyDown(editor, { key: 'Enter' });
+    await screen.findByText(/Original PDF export mapping ready/i);
+    fireEvent.click(screen.getByRole('button', { name: /export pdf/i }));
 
     await waitFor(() => {
-      expect(buildSchedulePdfBlobMock.mock.calls.length).toBeGreaterThan(initialCallCount);
+      expect(exportScheduleAsPdfMock).toHaveBeenCalled();
     });
 
-    const latestOptions = buildSchedulePdfBlobMock.mock.calls.at(-1)?.[2] as {
-      editedTextStyles?: { time?: { fontSize?: number } };
+    const latestOptions = exportScheduleAsPdfMock.mock.calls.at(-1)?.[2] as {
+      baselineSchedule?: WeekSchedule;
       sourcePdfUrl?: string;
+      templateLayout?: ReturnType<typeof createLayout>;
     };
 
     expect(latestOptions.sourcePdfUrl).toBe('https://example.com/source.pdf');
+    expect(latestOptions.templateLayout).toEqual(createLayout());
+    expect(latestOptions.baselineSchedule?.days[0]?.classes[0]?.time).toBe('7:15 AM');
   });
 
-  it('regenerates the live PDF preview when text styling changes', async () => {
+  it('updates inspector rows when classes are added and removed', async () => {
     renderHarness();
 
-    await screen.findByTestId('overlay-Monday-0-time');
-
-    const initialCallCount = buildSchedulePdfBlobMock.mock.calls.length;
-    const fontSizeInputs = screen.getAllByRole('spinbutton');
-
-    fireEvent.change(fontSizeInputs[0], { target: { value: '18' } });
-
-    await new Promise(resolve => setTimeout(resolve, 220));
-    expect(buildSchedulePdfBlobMock.mock.calls.length).toBe(initialCallCount);
-  });
-
-  it('keeps the original preview until the schedule content actually changes', async () => {
-    renderHarness();
-
-    await screen.findByTestId('overlay-Monday-0-time');
-    await new Promise(resolve => setTimeout(resolve, 220));
-
-    expect(buildSchedulePdfBlobMock).not.toHaveBeenCalled();
-  });
-
-  it('updates overlay count when classes are added and removed from the inspector', async () => {
-    renderHarness();
-
-    await screen.findByTestId('overlay-Monday-0-time');
-    expect(screen.getAllByTestId(/overlay-Monday-/)).toHaveLength(2);
+    await screen.findByTestId('template-MONDAY-0-time');
+    expect(screen.getAllByRole('button', { name: /remove/i })).toHaveLength(1);
 
     fireEvent.click(screen.getByRole('button', { name: /add class/i }));
 
     await waitFor(() => {
-      expect(screen.getAllByTestId(/overlay-Monday-/)).toHaveLength(4);
+      expect(screen.getAllByRole('button', { name: /remove/i })).toHaveLength(2);
     });
 
     fireEvent.click(screen.getAllByRole('button', { name: /remove/i })[1]);
 
     await waitFor(() => {
-      expect(screen.getAllByTestId(/overlay-Monday-/)).toHaveLength(2);
+      expect(screen.getAllByRole('button', { name: /remove/i })).toHaveLength(1);
     });
   });
 
-  it('shows the fallback form editor when template layout extraction is unavailable', async () => {
+  it('keeps the studio template editor active when template layout extraction is unavailable', async () => {
     extractPdfTemplateLayoutFromUrlMock.mockRejectedValueOnce(new Error('layout unavailable'));
     renderHarness();
 
-    expect(await screen.findByText(/Inline overlay editing is unavailable for this PDF/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Using template-only export fallback/i)).toBeInTheDocument();
+    expect(screen.getByText(/The studio template editor is ready/i)).toBeInTheDocument();
+    expect(screen.getByTestId('template-MONDAY-0-time')).toBeInTheDocument();
   });
 });

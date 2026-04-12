@@ -45,7 +45,14 @@ function createEmptyClass(location: string): ScheduleClass {
     className: '',
     trainer: '',
     location,
+    theme: '',
   };
+}
+
+function getTrainerFirstName(trainer?: string) {
+  const trimmed = trainer?.trim() ?? '';
+  if (!trimmed) return '';
+  return trimmed.split(/\s+/)[0] ?? trimmed;
 }
 
 function sortClassesByTime(classes: ScheduleClass[]): ScheduleClass[] {
@@ -158,7 +165,7 @@ export function PdfSourceEditorTab({ pdfFiles, previewUrls, onUpdateSchedule }: 
   const originalPreviewUrl = selectedFile ? previewUrls[selectedFile.id] : undefined;
   const selectedTemplateLayout = selectedFile ? templateLayouts[selectedFile.id] : undefined;
   const baselineSchedule = selectedFile ? baselineSchedules[selectedFile.id] : undefined;
-  const canInlineEdit = Boolean(selectedTemplateLayout);
+  const studioLocation = selectedFile?.location || selectedSchedule?.location || null;
 
   useEffect(() => {
     if (!selectedFile || !originalPreviewUrl || templateLayouts[selectedFile.id]) {
@@ -184,7 +191,7 @@ export function PdfSourceEditorTab({ pdfFiles, previewUrls, onUpdateSchedule }: 
       })
       .catch(error => {
         if (cancelled) return;
-        console.warn('Could not extract the original PDF row layout. Inline editing will fall back to the form editor for this file.', error);
+        console.warn('Could not extract the original PDF row layout. The studio template editor will stay available, but PDF export will use the template-based fallback for this file.', error);
         setTemplateLayoutResolved(current => ({
           ...current,
           [selectedFileId]: true,
@@ -266,7 +273,7 @@ export function PdfSourceEditorTab({ pdfFiles, previewUrls, onUpdateSchedule }: 
     return buildInlineOverlayTargets(selectedFile.id, selectedSchedule, selectedTemplateLayout);
   }, [selectedFile, selectedSchedule, selectedTemplateLayout]);
 
-  const inlineEditingEnabled = canInlineEdit;
+  const inlineEditingEnabled = Boolean(selectedSchedule);
 
   const renderFormEditor = () => {
     if (!selectedFile || !selectedSchedule) return null;
@@ -393,7 +400,7 @@ export function PdfSourceEditorTab({ pdfFiles, previewUrls, onUpdateSchedule }: 
       </div>
 
       {selectedFile && selectedSchedule && (
-        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(360px,0.6fr)]">
+        <div className="grid items-start gap-6 2xl:grid-cols-[minmax(0,1fr)_380px]">
           <section className="surface-card min-w-0 overflow-hidden p-0">
             <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
               <div>
@@ -401,31 +408,49 @@ export function PdfSourceEditorTab({ pdfFiles, previewUrls, onUpdateSchedule }: 
                   <FileCode className="h-5 w-5 text-blue-600" /> HTML Schedule Editor
                 </h3>
                 <p className="text-sm text-slate-500">
-                  Edit the HTML schedule directly with the original PDF styling, colors, and graphics preserved in the background.
+                  Edit the studio template directly. Parsed PDF rows are placed into the Bandra or Kemps schedule layout first, so the file is ready for inline formatting as soon as upload and sync finish.
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="secondary" className="border border-blue-200 bg-blue-50 text-blue-700 text-xs">
+                  Studio template ready
+                </Badge>
+
                 <Badge variant="secondary" className={cn(
                   'border text-xs',
                   selectedTemplateLayout ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'
                 )}>
                   {templateLoadingFileId === selectedFile.id
-                    ? 'Mapping original layout…'
+                    ? 'Mapping original PDF for export…'
                     : selectedTemplateLayout
-                      ? 'Inline row mapping ready'
-                      : 'Fallback form editor'}
+                      ? 'Original PDF export mapping ready'
+                      : 'Using template-only export fallback'}
                 </Badge>
 
                 <Badge variant="secondary" className="bg-slate-100 text-slate-700">{selectedFile.name}</Badge>
               </div>
             </div>
 
+            <div className="border-b border-slate-200 px-5 py-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-slate-900">Full-width preview workspace</p>
+                  <p className="text-xs text-slate-500">The schedule viewport now takes the full available canvas area. Use the sidebar for detailed controls and structure edits.</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                  <Badge variant="secondary" className="bg-white text-slate-700 border-slate-200">Preview width: 100%</Badge>
+                  <Badge variant="secondary" className="bg-white text-slate-700 border-slate-200">Inline theme badges enabled</Badge>
+                </div>
+              </div>
+            </div>
+
             <div className="p-4">
-              <div className="h-[900px] overflow-x-auto overflow-y-auto rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100">
+              <div className="h-[calc(100vh-14rem)] min-h-[900px] w-full overflow-x-auto overflow-y-auto rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100">
                 <EditableHtmlSchedule
                   schedule={selectedSchedule ?? null}
-                  sourcePdfUrl={originalPreviewUrl ?? null}
+                  sourcePdfUrl={null}
+                  studioLocation={studioLocation}
                   onScheduleUpdate={(updatedSchedule) => {
                     if (selectedFile) {
                       onUpdateSchedule(selectedFile.id, updatedSchedule);
@@ -436,16 +461,14 @@ export function PdfSourceEditorTab({ pdfFiles, previewUrls, onUpdateSchedule }: 
             </div>
           </section>
 
-          <section className="surface-card min-w-0 overflow-hidden p-0">
+          <section className="surface-card min-w-0 overflow-hidden p-0 2xl:sticky 2xl:top-4">
             <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
               <div className="min-w-0 flex-1">
                 <h3 className="flex items-center gap-2 font-display text-lg font-semibold text-slate-900">
                   <PencilLine className="h-5 w-5 text-blue-600" /> Schedule inspector
                 </h3>
                 <p className="text-sm text-slate-500">
-                  {inlineEditingEnabled
-                    ? 'Edit directly inside the HTML preview on the left, then use these controls for metadata, structure, and export.'
-                    : 'Use the form editor because inline PDF overlays are unavailable for this file.'}
+                  Edit directly inside the studio template on the left, then use these controls for metadata, structure, and export.
                 </p>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-2">
@@ -478,9 +501,15 @@ export function PdfSourceEditorTab({ pdfFiles, previewUrls, onUpdateSchedule }: 
               </div>
             </div>
 
-            {!inlineEditingEnabled ? renderFormEditor() : (
-              <ScrollArea className="h-[900px] w-full">
+            {inlineEditingEnabled && (
+              <ScrollArea className="h-[calc(100vh-12rem)] min-h-[900px] w-full">
                 <div className="min-w-0 space-y-5 p-5 pr-4">
+                  {!selectedTemplateLayout && (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                      The studio template editor is ready. Original PDF row mapping could not be extracted for this file, so PDF export will use the template-based fallback instead of source-preserving placement.
+                    </div>
+                  )}
+
                   <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                     <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
                       <h4 className="font-semibold text-slate-900">Element styling</h4>
@@ -692,9 +721,12 @@ export function PdfSourceEditorTab({ pdfFiles, previewUrls, onUpdateSchedule }: 
                                     {classDescriptor?.synthetic && (
                                       <Badge variant="secondary" className="border-blue-200 bg-blue-50 text-blue-700">Synthetic slot</Badge>
                                     )}
+                                    {cls.theme?.trim() && (
+                                      <Badge variant="secondary" className="border-violet-200 bg-violet-50 text-violet-700">{cls.theme.trim()}</Badge>
+                                    )}
                                   </div>
                                   <p className="mt-2 truncate text-sm font-medium text-slate-900">{buildCombinedClassLine(cls.className, cls.trainer) || 'Untitled class'}</p>
-                                  <p className="text-xs text-slate-500">{cls.time || 'No time set'} · {cls.location || selectedSchedule.location}</p>
+                                  <p className="text-xs text-slate-500">{cls.time || 'No time set'} · {getTrainerFirstName(cls.trainer) || 'No trainer'} · {cls.location || selectedSchedule.location}</p>
                                 </div>
 
                                 <Button
@@ -707,9 +739,28 @@ export function PdfSourceEditorTab({ pdfFiles, previewUrls, onUpdateSchedule }: 
                                 </Button>
                               </div>
 
-                              <p className="mt-3 text-xs text-slate-500">
-                                You can edit this row directly in the HTML schedule preview, or use the controls above to adjust exported styling.
-                              </p>
+                              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                <label className="space-y-1.5">
+                                  <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Time</span>
+                                  <Input value={cls.time} onChange={event => updateClass(dayIndex, classIndex, 'time', event.target.value)} />
+                                </label>
+                                <label className="space-y-1.5">
+                                  <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Trainer</span>
+                                  <Input value={cls.trainer} onChange={event => updateClass(dayIndex, classIndex, 'trainer', event.target.value)} />
+                                </label>
+                                <label className="space-y-1.5 md:col-span-2">
+                                  <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Class name</span>
+                                  <Input value={cls.className} onChange={event => updateClass(dayIndex, classIndex, 'className', event.target.value)} />
+                                </label>
+                                <label className="space-y-1.5">
+                                  <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Theme badge</span>
+                                  <Input value={cls.theme || ''} onChange={event => updateClass(dayIndex, classIndex, 'theme', event.target.value)} placeholder="Optional theme" />
+                                </label>
+                                <label className="space-y-1.5">
+                                  <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Location</span>
+                                  <Input value={cls.location || ''} onChange={event => updateClass(dayIndex, classIndex, 'location', event.target.value)} />
+                                </label>
+                              </div>
                             </div>
                           );
                         })}

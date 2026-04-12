@@ -171,6 +171,39 @@
   text-overflow: ellipsis;
 }
 
+.table-premium.table-side-by-side tbody tr {
+  height: 40px;
+  max-height: 40px;
+}
+
+.table-premium.table-side-by-side {
+  width: max-content;
+  min-width: 100%;
+  table-layout: auto;
+}
+
+.table-premium.table-side-by-side tbody td {
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+  max-height: 40px;
+  vertical-align: middle;
+}
+
+.table-premium.table-side-by-side thead th {
+  white-space: nowrap;
+}
+
+.table-premium.table-side-by-side tbody td input {
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+  width: auto;
+  min-width: 100%;
+  max-width: none;
+  line-height: 1.2;
+}
+
 .table-premium tbody tr:hover {
   background: rgba(3, 83, 164, 0.04);
 }

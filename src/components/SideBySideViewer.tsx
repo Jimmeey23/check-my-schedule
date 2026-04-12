@@ -215,6 +215,9 @@ function getCombinedLocationLabel(row: AlignedRow): string {
 }
 
 export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter = 'all' }: SideBySideViewerProps) {
+  const getAutoInputWidth = (value: string | null | undefined, minChars = 8) => ({
+    width: `${Math.max((value || '').length + 1, minChars)}ch`,
+  });
   const [filters, setFilters] = useState<FilterState>({ day: [], location: [], trainer: [], className: [] });
   const [editablePdfData, setEditablePdfData] = useState<PdfClassData[]>([]);
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
@@ -654,7 +657,7 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
       </div>
 
       <div className="flex-1 overflow-auto surface-card p-0 overflow-hidden">
-        <table className="table-premium table-head-dark table-compact text-sm">
+        <table className="table-premium table-head-dark table-compact table-side-by-side text-sm">
           <thead>
             <tr className="gradient-header-dark text-white sticky top-0 z-10">
               <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Day</th>
@@ -686,16 +689,26 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
                 const editablePdfRow = getEditablePdfRow(row.pdfClass);
 
                 const rowBgClass = isMatch
-                  ? 'bg-white hover:bg-slate-50 border-l-2 border-l-transparent'
+                  ? 'bg-emerald-50/35 hover:bg-emerald-50 border-l-4 border-l-emerald-300'
                   : (isPdfOnly || isCsvOnly)
                     ? 'bg-slate-50 hover:bg-slate-100 border-l-4 border-l-slate-400'
-                    : 'bg-blue-50/50 hover:bg-blue-50 border-l-4 border-l-blue-700';
+                    : row.issueTypes.length > 1
+                      ? 'bg-rose-50/80 hover:bg-rose-50 border-l-4 border-l-rose-600'
+                      : isTrainerMismatch
+                        ? 'bg-amber-50/85 hover:bg-amber-50 border-l-4 border-l-amber-500'
+                        : isClassMismatch
+                          ? 'bg-fuchsia-50/85 hover:bg-fuchsia-50 border-l-4 border-l-fuchsia-500'
+                          : isTimeMismatch
+                            ? 'bg-sky-50/85 hover:bg-sky-50 border-l-4 border-l-sky-500'
+                            : isLocationMismatch
+                              ? 'bg-violet-50/85 hover:bg-violet-50 border-l-4 border-l-violet-500'
+                              : 'bg-rose-50/80 hover:bg-rose-50 border-l-4 border-l-rose-600';
 
                 return (
                   <tr
                     key={`${day}-${idx}`}
                     data-mismatch-index={mismatchIndex !== undefined ? mismatchIndex : undefined}
-                    className={`border-b border-slate-200/70 transition-colors ${rowBgClass} ${isActiveMismatch ? 'ring-2 ring-blue-300 ring-inset' : ''}`}
+                    className={`border-b border-slate-200/70 transition-colors ${rowBgClass} ${isActiveMismatch ? 'ring-2 ring-rose-300 ring-inset shadow-[inset_0_0_0_1px_rgba(251,113,133,0.25)]' : ''}`}
                   >
                     <td className="px-3 py-2 font-semibold text-slate-900">{row.day}</td>
                     <td className={`px-3 py-2 text-slate-700 ${isLocationMismatch ? 'bg-amber-100/70 font-semibold text-slate-900' : ''}`}>
@@ -704,10 +717,10 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
                     <td className={`px-3 py-2 font-mono ${isTimeMismatch ? 'text-amber-800 font-semibold bg-amber-100/60' : 'text-slate-800'} ${!row.csvClass ? 'bg-slate-100/70 text-slate-400' : ''}`}>
                       {row.csvClass?.time || '—'}
                     </td>
-                    <td className={`px-3 py-2 ${isClassMismatch ? 'text-slate-900 font-semibold bg-amber-100/70' : 'text-slate-800'} ${!row.csvClass ? 'bg-slate-100/70 text-slate-400' : ''}`}>
+                    <td className={`px-3 py-2 whitespace-nowrap ${isClassMismatch ? 'text-slate-900 font-semibold bg-amber-100/70' : 'text-slate-800'} ${!row.csvClass ? 'bg-slate-100/70 text-slate-400' : ''}`}>
                       {row.csvClass?.className || '—'}
                     </td>
-                    <td className={`px-3 py-2 ${isTrainerMismatch ? 'text-slate-900 font-semibold bg-amber-100/70' : 'text-slate-700'} ${!row.csvClass ? 'bg-slate-100/70 text-slate-400' : ''}`}>
+                    <td className={`px-3 py-2 whitespace-nowrap ${isTrainerMismatch ? 'text-slate-900 font-semibold bg-amber-100/70' : 'text-slate-700'} ${!row.csvClass ? 'bg-slate-100/70 text-slate-400' : ''}`}>
                       {row.csvClass?.trainer || '—'}
                     </td>
                     <td className="px-3 py-2 text-center bg-white/60">
@@ -722,27 +735,30 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
                           type="text"
                           value={editablePdfRow.time}
                           onChange={e => handleCellEdit(editablePdfRow.uniqueKey, 'time', e.target.value)}
-                          className="w-full bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-[#0353A4] px-1 rounded"
+                          style={getAutoInputWidth(editablePdfRow.time, 8)}
+                          className="bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-[#0353A4] px-1 rounded"
                         />
                       ) : '—'}
                     </td>
-                    <td className={`px-3 py-2 ${isClassMismatch ? 'text-slate-900 font-semibold bg-amber-100/70' : 'text-slate-800'} ${!editablePdfRow ? 'bg-slate-100/70 text-slate-400' : ''}`}>
+                    <td className={`px-3 py-2 whitespace-nowrap ${isClassMismatch ? 'text-slate-900 font-semibold bg-amber-100/70' : 'text-slate-800'} ${!editablePdfRow ? 'bg-slate-100/70 text-slate-400' : ''}`}>
                       {editablePdfRow ? (
                         <input
                           type="text"
                           value={editablePdfRow.className}
                           onChange={e => handleCellEdit(editablePdfRow.uniqueKey, 'className', e.target.value)}
-                          className="w-full bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-[#0353A4] px-1 rounded"
+                          style={getAutoInputWidth(editablePdfRow.className, 18)}
+                          className="bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-[#0353A4] px-1 rounded"
                         />
                       ) : '—'}
                     </td>
-                    <td className={`px-3 py-2 ${isTrainerMismatch ? 'text-slate-900 font-semibold bg-amber-100/70' : 'text-slate-700'} ${!editablePdfRow ? 'bg-slate-100/70 text-slate-400' : ''}`}>
+                    <td className={`px-3 py-2 whitespace-nowrap ${isTrainerMismatch ? 'text-slate-900 font-semibold bg-amber-100/70' : 'text-slate-700'} ${!editablePdfRow ? 'bg-slate-100/70 text-slate-400' : ''}`}>
                       {editablePdfRow ? (
                         <input
                           type="text"
                           value={editablePdfRow.trainer}
                           onChange={e => handleCellEdit(editablePdfRow.uniqueKey, 'trainer', e.target.value)}
-                          className="w-full bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-[#0353A4] px-1 rounded"
+                          style={getAutoInputWidth(editablePdfRow.trainer, 14)}
+                          className="bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-[#0353A4] px-1 rounded"
                         />
                       ) : '—'}
                     </td>

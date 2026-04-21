@@ -18,6 +18,7 @@ export function FileUploadZone({
   acceptedTypes = ['pdf', 'csv']
 }: FileUploadZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
+  const pendingFiles = uploadedFiles.filter(file => file.status === 'uploading' || file.status === 'processing');
 
   const acceptString = acceptedTypes.map(t => t === 'pdf' ? 'application/pdf' : '.csv,text/csv').join(',');
 
@@ -80,6 +81,13 @@ export function FileUploadZone({
 
   return (
     <div className="space-y-6">
+      {pendingFiles.length > 0 && (
+        <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 shadow-sm">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          {pendingFiles.length === 1 ? 'Processing 1 file…' : `Processing ${pendingFiles.length} files…`}
+        </div>
+      )}
+
       {/* Upload Zone */}
       <div
         onDragOver={handleDragOver}

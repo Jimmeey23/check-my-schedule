@@ -58,7 +58,7 @@ const statusConfig = {
     icon: CheckCircle2,
     label: 'Match',
     text: 'text-slate-700',
-    iconText: 'text-blue-800',
+    iconText: 'text-emerald-700',
     pillBorder: 'border-slate-300',
     iconBg: 'bg-slate-50',
     iconBorder: 'border-slate-300',
@@ -67,10 +67,10 @@ const statusConfig = {
     icon: XCircle,
     label: 'Mismatch',
     text: 'text-slate-800',
-    iconText: 'text-blue-700',
-    pillBorder: 'border-slate-300',
-    iconBg: 'bg-blue-50',
-    iconBorder: 'border-blue-200',
+    iconText: 'text-amber-700',
+    pillBorder: 'border-amber-200',
+    iconBg: 'bg-amber-50',
+    iconBorder: 'border-amber-200',
   },
   missing: {
     icon: AlertTriangle,
@@ -218,10 +218,20 @@ function StatCard({
   icon: typeof CheckCircle2;
 }) {
   return (
-    <div className={cn('surface-card hoverable p-3 sm:p-4 text-center border-l-4', accent || 'border-l-transparent')}>
-      <Icon className="w-4 h-4 sm:w-5 sm:h-5 mx-auto mb-1 opacity-80" />
-      <p className="text-xl sm:text-2xl font-bold font-display text-slate-900">{value}</p>
-      <p className="text-[10px] sm:text-xs opacity-70 font-medium text-slate-600">{label}</p>
+    <div
+      className={cn(
+        'group rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/80 p-3 sm:p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md',
+        accent || 'border-slate-200'
+      )}
+    >
+      <div className="mb-3 flex items-center justify-between">
+        <div className="rounded-xl bg-slate-900 p-2 text-white shadow-sm">
+          <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
+        </div>
+        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Overview</span>
+      </div>
+      <p className="text-2xl sm:text-3xl font-bold font-display text-slate-950 leading-none">{value}</p>
+      <p className="mt-1 text-[11px] sm:text-xs font-medium text-slate-500">{label}</p>
     </div>
   );
 }
@@ -248,9 +258,13 @@ function ClassCell({ cls, compactMode }: { cls: ComparedClass | null; compactMod
   return (
     <div
       className={cn(
-        'rounded-xl border shadow-soft transition-all',
+        'rounded-2xl border shadow-sm transition-all',
         compactMode ? 'p-2.5 min-h-[64px]' : 'p-3 min-h-[80px]',
-        cls.status === 'match' ? 'border-border/70 bg-white/85' : 'border-blue-200 bg-blue-50/40'
+        cls.status === 'match'
+          ? 'border-slate-200/80 bg-gradient-to-b from-white to-slate-50/60'
+          : cls.status === 'mismatch'
+            ? 'border-amber-200/80 bg-gradient-to-b from-amber-50/90 to-amber-50/45'
+            : 'border-slate-200/80 bg-gradient-to-b from-slate-50 to-white'
       )}
     >
       <div className="flex items-start justify-between gap-2 mb-1">
@@ -260,19 +274,19 @@ function ClassCell({ cls, compactMode }: { cls: ComparedClass | null; compactMod
           </span>
           <span className="font-semibold text-xs text-slate-900 truncate">{displayTime}</span>
         </div>
-        <Badge variant="outline" className={cn('text-[9px] h-5 px-1.5 bg-white/70 text-slate-700', config.pillBorder)}>
+        <Badge variant="outline" className={cn('h-5 w-[108px] justify-center whitespace-nowrap rounded-full bg-white/80 px-1.5 text-[9px] text-slate-700', config.pillBorder)}>
           {config.label}
         </Badge>
       </div>
 
-      <p className={cn('font-medium text-xs leading-tight', cls.differences?.className ? 'text-blue-900 font-semibold' : 'text-slate-900')}>
+      <p className={cn('font-medium text-xs leading-tight', cls.differences?.className ? 'text-slate-950 font-semibold' : 'text-slate-900')}>
         {getDisplayName(cls)}
       </p>
-      <p className={cn('text-[11px] mt-0.5', cls.differences?.trainer ? 'text-blue-900 font-semibold' : 'text-slate-600')}>
+      <p className={cn('text-[11px] mt-0.5', cls.differences?.trainer ? 'text-slate-900 font-semibold' : 'text-slate-600')}>
         {cls.normalizedTrainer || cls.trainer || '—'}
       </p>
       {cls.normalizedLocation && (
-        <p className={cn('text-[10px] mt-0.5', cls.differences?.location ? 'text-blue-900' : 'text-slate-500')}>
+        <p className={cn('text-[10px] mt-0.5', cls.differences?.location ? 'text-slate-800' : 'text-slate-500')}>
           {cls.normalizedLocation}
         </p>
       )}
@@ -280,7 +294,7 @@ function ClassCell({ cls, compactMode }: { cls: ComparedClass | null; compactMod
       {issueChips.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1">
           {issueChips.map(chip => (
-            <Badge key={chip} variant="outline" className="text-[9px] h-4 px-1.5 border-blue-200 text-blue-900 bg-blue-50">
+            <Badge key={chip} variant="outline" className="text-[9px] h-4 px-1.5 rounded-full border-amber-200 text-amber-900 bg-amber-50/80">
               {chip}
             </Badge>
           ))}
@@ -493,18 +507,18 @@ export function ComparisonView({ comparison, locationFilter: sharedLocationFilte
         <StatCard label="Extra" value={summary.extraInCsv} accent="border-l-blue-700/80" icon={Plus} />
       </div>
 
-      <div className="surface-card p-4 space-y-3">
+      <div className="rounded-[24px] border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/80 p-4 shadow-sm space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <ArrowLeftRight className="w-4 h-4 text-primary" />
             <span className="font-medium text-sm text-foreground">Filtered Match Rate</span>
-            <Badge variant="outline" className="text-[10px] bg-white/70">
+            <Badge variant="outline" className="text-[10px] rounded-full bg-white/80 border-slate-200 text-slate-600">
               {inViewSummary.totalRows} rows in view
             </Badge>
           </div>
           <span className="text-xl font-bold font-display text-slate-900">{inViewMatchRate}%</span>
         </div>
-        <div className="h-2.5 bg-slate-200/70 rounded-full overflow-hidden">
+        <div className="h-2.5 bg-slate-200/70 rounded-full overflow-hidden shadow-inner">
           <div className="h-full transition-all duration-700 rounded-full gradient-primary" style={{ width: `${inViewMatchRate}%` }} />
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-slate-600">
@@ -515,13 +529,13 @@ export function ComparisonView({ comparison, locationFilter: sharedLocationFilte
         </div>
       </div>
 
-      <div className="surface-card p-4 space-y-3">
+      <div className="rounded-[24px] border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/80 p-4 shadow-sm space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <SlidersHorizontal className="w-4 h-4 text-primary" />
             <span className="font-medium text-sm">Comparison Controls</span>
           </div>
-          <Button size="sm" variant="ghost" className="h-8 px-2.5 text-xs" onClick={resetFilters}>
+          <Button size="sm" variant="ghost" className="h-8 px-2.5 text-xs rounded-full" onClick={resetFilters}>
             <FilterX className="w-3.5 h-3.5" />
             Reset
           </Button>
@@ -534,12 +548,12 @@ export function ComparisonView({ comparison, locationFilter: sharedLocationFilte
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Search class, trainer, time, location"
-              className="pl-9 h-10 text-xs"
+              className="pl-9 h-10 text-xs rounded-2xl border-slate-200 bg-white shadow-sm"
             />
           </div>
 
           <Select value={statusFilter} onValueChange={v => setStatusFilter(v as StatusFilter)}>
-            <SelectTrigger className="h-10 text-xs bg-white/70 backdrop-blur-sm border-border/70 shadow-soft">
+            <SelectTrigger className="h-10 text-xs rounded-2xl bg-white border-slate-200 shadow-sm">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
@@ -552,7 +566,7 @@ export function ComparisonView({ comparison, locationFilter: sharedLocationFilte
           </Select>
 
           <Select value={issueFilter} onValueChange={v => setIssueFilter(v as IssueFilter)}>
-            <SelectTrigger className="h-10 text-xs bg-white/70 backdrop-blur-sm border-border/70 shadow-soft">
+            <SelectTrigger className="h-10 text-xs rounded-2xl bg-white border-slate-200 shadow-sm">
               <SelectValue placeholder="Issue Type" />
             </SelectTrigger>
             <SelectContent>
@@ -567,7 +581,7 @@ export function ComparisonView({ comparison, locationFilter: sharedLocationFilte
           </Select>
 
           <Select value={dayFilter} onValueChange={setDayFilter}>
-            <SelectTrigger className="h-10 text-xs bg-white/70 backdrop-blur-sm border-border/70 shadow-soft">
+            <SelectTrigger className="h-10 text-xs rounded-2xl bg-white border-slate-200 shadow-sm">
               <SelectValue placeholder="Day" />
             </SelectTrigger>
             <SelectContent>
@@ -581,7 +595,7 @@ export function ComparisonView({ comparison, locationFilter: sharedLocationFilte
           </Select>
 
           <Select value={activeLocationFilter} onValueChange={setLocationFilter} disabled={sharedLocationFilter !== 'all'}>
-            <SelectTrigger className="h-10 text-xs bg-white/70 backdrop-blur-sm border-border/70 shadow-soft">
+            <SelectTrigger className="h-10 text-xs rounded-2xl bg-white border-slate-200 shadow-sm">
               <SelectValue placeholder="Location" />
             </SelectTrigger>
             <SelectContent>
@@ -595,7 +609,7 @@ export function ComparisonView({ comparison, locationFilter: sharedLocationFilte
           </Select>
 
           <Select value={sortMode} onValueChange={v => setSortMode(v as SortMode)}>
-            <SelectTrigger className="h-10 text-xs bg-white/70 backdrop-blur-sm border-border/70 shadow-soft">
+            <SelectTrigger className="h-10 text-xs rounded-2xl bg-white border-slate-200 shadow-sm">
               <SelectValue placeholder="Sort" />
             </SelectTrigger>
             <SelectContent>
@@ -608,14 +622,14 @@ export function ComparisonView({ comparison, locationFilter: sharedLocationFilte
         </div>
 
         <div className="flex flex-wrap gap-2 items-center justify-between">
-          <div className="flex gap-1 p-1 surface-muted rounded-xl shadow-soft">
+          <div className="flex gap-1 p-1 rounded-2xl border border-slate-200 bg-slate-50/90 shadow-sm">
             {viewModes.map(mode => (
               <button
                 key={mode.id}
                 onClick={() => setViewMode(mode.id)}
                 className={cn(
-                  'flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all',
-                  viewMode === mode.id ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all',
+                  viewMode === mode.id ? 'bg-white text-slate-900 shadow-sm border border-slate-200' : 'text-slate-500 hover:text-slate-900'
                 )}
               >
                 <mode.icon className="w-3.5 h-3.5" />
@@ -625,16 +639,16 @@ export function ComparisonView({ comparison, locationFilter: sharedLocationFilte
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <label className="flex items-center gap-2 rounded-lg border border-border/70 bg-white/70 px-2.5 py-1.5 text-xs">
+            <label className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs shadow-sm">
               <Switch checked={focusIssuesOnly} onCheckedChange={setFocusIssuesOnly} />
               Issues only
             </label>
-            <label className="flex items-center gap-2 rounded-lg border border-border/70 bg-white/70 px-2.5 py-1.5 text-xs">
+            <label className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs shadow-sm">
               <Switch checked={compactMode} onCheckedChange={setCompactMode} />
               Compact rows
             </label>
             <Select value={groupMode} onValueChange={v => setGroupMode(v as GroupMode)}>
-              <SelectTrigger className="w-[150px] h-9 text-xs bg-white/70 backdrop-blur-sm border-border/70 shadow-soft">
+              <SelectTrigger className="w-[150px] h-9 text-xs rounded-full bg-white border-slate-200 shadow-sm">
                 <SelectValue placeholder="Grouping" />
               </SelectTrigger>
               <SelectContent>
@@ -646,15 +660,15 @@ export function ComparisonView({ comparison, locationFilter: sharedLocationFilte
         </div>
       </div>
 
-      <div className="surface-card p-3 border border-slate-200 bg-white">
+      <div className="rounded-[24px] border border-slate-200/80 bg-gradient-to-b from-slate-900 to-slate-800 p-3 text-white shadow-md">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold text-slate-900">Mismatch Navigator</p>
-            <p className="text-xs text-slate-600">
+            <p className="text-sm font-semibold text-white">Mismatch Navigator</p>
+            <p className="text-xs text-slate-300">
               {focusTargets.length} highlighted issue{focusTargets.length === 1 ? '' : 's'} in current view
             </p>
             {focusTargets.length > 0 && (
-              <p className="text-xs text-blue-900 mt-0.5">
+              <p className="text-xs text-amber-200 mt-0.5">
                 {focusTargets[activeMismatchIndex]?.day} • {focusTargets[activeMismatchIndex]?.time} • {focusTargets[activeMismatchIndex]?.className}
               </p>
             )}
@@ -664,7 +678,7 @@ export function ComparisonView({ comparison, locationFilter: sharedLocationFilte
               size="sm"
               onClick={handleCopyWhatsAppMessage}
               disabled={summary.mismatches === 0 || isCopyingWhatsApp}
-              className="h-8 px-3 bg-blue-900 hover:bg-blue-800 text-white gap-1.5"
+              className="h-8 px-3 rounded-full bg-white text-slate-900 hover:bg-slate-100 gap-1.5"
             >
               <MessageCircle className="w-4 h-4" />
               <span className="hidden sm:inline">Copy WhatsApp</span>
@@ -675,11 +689,11 @@ export function ComparisonView({ comparison, locationFilter: sharedLocationFilte
               variant="outline"
               onClick={() => scrollToMismatch(activeMismatchIndex - 1)}
               disabled={focusTargets.length === 0}
-              className="h-8 px-2.5"
+              className="h-8 px-2.5 rounded-full border-slate-600 bg-slate-800 text-white hover:bg-slate-700"
             >
               <ChevronLeft className="w-4 h-4" />
             </Button>
-            <div className="text-xs font-semibold text-slate-700 min-w-[56px] text-center">
+            <div className="text-xs font-semibold text-slate-200 min-w-[56px] text-center">
               {focusTargets.length > 0 ? `${activeMismatchIndex + 1}/${focusTargets.length}` : '0/0'}
             </div>
             <Button
@@ -687,7 +701,7 @@ export function ComparisonView({ comparison, locationFilter: sharedLocationFilte
               variant="outline"
               onClick={() => scrollToMismatch(activeMismatchIndex + 1)}
               disabled={focusTargets.length === 0}
-              className="h-8 px-2.5"
+              className="h-8 px-2.5 rounded-full border-slate-600 bg-slate-800 text-white hover:bg-slate-700"
             >
               <ChevronRight className="w-4 h-4" />
             </Button>
@@ -771,19 +785,19 @@ function SideBySideView({
         const matchCount = group.rows.filter(row => row.status === 'match').length;
 
         return (
-          <div key={group.label} className="surface-card p-0 overflow-hidden">
-            <div className="gradient-header-dark text-white px-4 py-2.5 flex items-center justify-between">
+          <div key={group.label} className="overflow-hidden rounded-[24px] border border-slate-200/80 bg-white shadow-sm">
+            <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-slate-800 text-white px-4 py-3 flex items-center justify-between">
               <h4 className="font-display font-semibold text-sm tracking-wide">{group.label}</h4>
               <div className="flex items-center gap-3 text-xs opacity-90">
                 <span>PDF: {pdfCount}</span>
                 <span>CSV: {csvCount}</span>
-                <Badge className="bg-white/10 text-white border-white/20 text-[10px]">
+                <span className="inline-flex min-w-[84px] justify-center rounded-full border border-white/20 bg-white/10 px-2 py-1 text-[10px] font-medium whitespace-nowrap">
                   {matchCount}/{Math.max(pdfCount, csvCount)} match
-                </Badge>
+                </span>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 divide-x bg-secondary/40">
+            <div className="grid grid-cols-2 divide-x border-b border-slate-200 bg-slate-50/90">
               <div className="px-3 py-1.5">
                 <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">PDF Schedule</p>
               </div>
@@ -803,9 +817,12 @@ function SideBySideView({
                     key={`${group.label}-${idx}`}
                     data-focus-id={focusId || undefined}
                     className={cn(
-                      'grid grid-cols-2 divide-x divide-border/50 transition-colors',
-                      isIssue ? 'border-l-4 border-l-blue-700 bg-blue-50/35 hover:bg-blue-50/50' : 'bg-white/40 hover:bg-white/60',
-                      isActive && 'ring-2 ring-blue-300 ring-inset'
+                      'grid grid-cols-2 divide-x divide-slate-200 transition-colors',
+                      isIssue
+                        ? isActive
+                          ? 'bg-amber-100/80 hover:bg-amber-100'
+                          : 'bg-amber-50/55 hover:bg-amber-50/80'
+                        : 'bg-white hover:bg-slate-50/70'
                     )}
                   >
                     <div className={cn('p-2', compactMode && 'py-1.5')}>
@@ -831,19 +848,19 @@ function FlatListView({ rows, compactMode, activeFocusId }: { rows: ComparisonAl
   }
 
   return (
-    <div className="surface-card p-0 overflow-hidden">
+    <div className="overflow-hidden rounded-[24px] border border-slate-200/80 bg-white shadow-sm">
       <table className={cn('table-premium text-sm', compactMode && 'table-compact')}>
         <thead>
-          <tr className="border-b bg-secondary/50 text-left text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">
-            <th className="sticky top-0 z-10 bg-white p-2.5">Status</th>
-            <th className="sticky top-0 z-10 bg-white p-2.5">Day</th>
-            <th className="sticky top-0 z-10 bg-white p-2.5">Time</th>
-            <th className="sticky top-0 z-10 bg-white p-2.5">Location</th>
-            <th className="sticky top-0 z-10 bg-white p-2.5">PDF Class</th>
-            <th className="sticky top-0 z-10 bg-white p-2.5">CSV Class</th>
-            <th className="sticky top-0 z-10 bg-white p-2.5">PDF Trainer</th>
-            <th className="sticky top-0 z-10 bg-white p-2.5">CSV Trainer</th>
-            <th className="sticky top-0 z-10 bg-white p-2.5">Issues</th>
+          <tr className="border-b border-slate-200 bg-slate-50 text-left text-[11px] text-slate-500 font-semibold uppercase tracking-[0.16em]">
+            <th className="sticky top-0 z-10 bg-slate-50 p-3">Status</th>
+            <th className="sticky top-0 z-10 bg-slate-50 p-3">Day</th>
+            <th className="sticky top-0 z-10 bg-slate-50 p-3">Time</th>
+            <th className="sticky top-0 z-10 bg-slate-50 p-3">Location</th>
+            <th className="sticky top-0 z-10 bg-slate-50 p-3">PDF Class</th>
+            <th className="sticky top-0 z-10 bg-slate-50 p-3">CSV Class</th>
+            <th className="sticky top-0 z-10 bg-slate-50 p-3">PDF Trainer</th>
+            <th className="sticky top-0 z-10 bg-slate-50 p-3">CSV Trainer</th>
+            <th className="sticky top-0 z-10 bg-slate-50 p-3">Issues</th>
           </tr>
         </thead>
         <tbody>
@@ -863,13 +880,16 @@ function FlatListView({ rows, compactMode, activeFocusId }: { rows: ComparisonAl
                 data-focus-id={focusId || undefined}
                 className={cn(
                   'border-b transition-colors',
-                  isIssue ? 'border-l-4 border-l-blue-700 bg-blue-50/25 hover:bg-blue-50/40' : 'hover:bg-secondary/20',
-                  isActive && 'ring-2 ring-blue-300 ring-inset'
+                  isIssue
+                    ? isActive
+                      ? 'bg-amber-100/80 hover:bg-amber-100'
+                      : 'bg-amber-50/45 hover:bg-amber-50/70'
+                    : 'hover:bg-slate-50/70'
                 )}
               >
                 <td className="p-2.5">
                   <div className="flex items-center gap-1">
-                    <span className={cn('inline-flex h-6 w-6 items-center justify-center rounded-full border', cfg.iconBg, cfg.iconBorder)}>
+                        <span className={cn('inline-flex h-6 w-6 items-center justify-center rounded-full border shadow-sm', cfg.iconBg, cfg.iconBorder)}>
                       <Icon className={cn('w-3.5 h-3.5', cfg.iconText)} />
                     </span>
                     <span className={cn('text-xs font-medium', cfg.text)}>{cfg.label}</span>
@@ -890,21 +910,10 @@ function FlatListView({ rows, compactMode, activeFocusId }: { rows: ComparisonAl
                 <td className={cn('p-2.5 text-xs', row.csvClass?.differences?.trainer && 'text-amber-900 font-semibold')}>
                   {row.csvClass?.normalizedTrainer || row.csvClass?.trainer || '—'}
                 </td>
-                <td className="p-2.5 text-xs">
-                  <div className="flex flex-wrap gap-1">
-                    {issueLabels.map(label => (
-                      <Badge
-                        key={label}
-                        variant="outline"
-                        className={cn(
-                          'text-[10px] h-5 px-1.5',
-                          label === '—' ? 'border-slate-200 text-slate-500' : 'border-amber-300 text-amber-900 bg-amber-100/40'
-                        )}
-                      >
-                        {label}
-                      </Badge>
-                    ))}
-                  </div>
+                <td className="p-2.5 text-xs text-slate-600 max-w-[220px]">
+                  <span className={cn('block truncate', issueLabels[0] !== '—' && 'text-amber-900 font-medium')} title={issueLabels.join(', ')}>
+                    {issueLabels.join(', ')}
+                  </span>
                 </td>
               </tr>
             );
@@ -939,8 +948,8 @@ function LocationCompView({
         const rate = sortedRows.length > 0 ? Math.round((matches / sortedRows.length) * 100) : 0;
 
         return (
-          <div key={location} className="surface-card p-0 overflow-hidden">
-            <div className="surface-muted px-4 py-3 flex items-center justify-between">
+          <div key={location} className="overflow-hidden rounded-[24px] border border-slate-200/80 bg-white shadow-sm">
+            <div className="bg-gradient-to-r from-white to-slate-50 px-4 py-3 flex items-center justify-between border-b border-slate-200">
               <div className="flex items-center gap-2">
                 <Building2 className="w-4 h-4 text-primary" />
                 <h4 className="font-display font-semibold text-sm">{location}</h4>
@@ -953,7 +962,7 @@ function LocationCompView({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 divide-x bg-secondary/30">
+            <div className="grid grid-cols-2 divide-x bg-slate-50/80 border-b border-slate-200">
               <div className="px-3 py-1.5">
                 <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">PDF</p>
               </div>
@@ -973,9 +982,12 @@ function LocationCompView({
                     key={`${location}-${idx}`}
                     data-focus-id={focusId || undefined}
                     className={cn(
-                      'grid grid-cols-2 divide-x divide-border/50 transition-colors',
-                      isIssue ? 'border-l-4 border-l-amber-500 bg-amber-50/35 hover:bg-amber-50/50' : 'bg-white/40 hover:bg-white/60',
-                      isActive && 'ring-2 ring-blue-300 ring-inset'
+                      'grid grid-cols-2 divide-x divide-slate-200 transition-colors',
+                      isIssue
+                        ? isActive
+                          ? 'bg-amber-100/80 hover:bg-amber-100'
+                          : 'bg-amber-50/55 hover:bg-amber-50/80'
+                        : 'bg-white hover:bg-slate-50/70'
                     )}
                   >
                     <div className={cn('p-2', compactMode && 'py-1.5')}>
@@ -1047,10 +1059,10 @@ function IssueBoardView({
   return (
     <div className="space-y-4">
       {entries.map(section => (
-        <div key={section.type} className="surface-card p-0 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-2.5 border-b bg-secondary/40">
+        <div key={section.type} className="overflow-hidden rounded-[24px] border border-slate-200/80 bg-white shadow-sm">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-gradient-to-r from-white to-slate-50">
             <p className="text-sm font-semibold text-slate-900">{ISSUE_LABELS[section.type]} Issues</p>
-            <Badge variant="outline" className="text-[10px] bg-white/70 border-amber-300 text-amber-900">
+            <Badge variant="outline" className="text-[10px] rounded-full bg-white border-amber-200 text-amber-900">
               {section.rows.length}
             </Badge>
           </div>
@@ -1064,7 +1076,10 @@ function IssueBoardView({
                 <div
                   key={`${section.type}-${idx}`}
                   data-focus-id={focusId || undefined}
-                  className={cn('p-3 border-l-4 border-l-blue-700 bg-blue-50/25', isActive && 'ring-2 ring-blue-300 ring-inset')}
+                  className={cn(
+                    'p-3 transition-colors',
+                    isActive ? 'bg-amber-100/80 hover:bg-amber-100' : 'bg-amber-50/45 hover:bg-amber-50/70'
+                  )}
                 >
                   <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 mb-2">
                     <Badge variant="outline" className="text-[10px] h-5 px-1.5 bg-white/70">
@@ -1126,16 +1141,16 @@ function SummaryView({ comparison }: { comparison: ScheduleComparisonResult }) {
     <div className="space-y-6">
       <div>
         <h4 className="font-display font-semibold mb-3 text-sm">Day-by-Day Breakdown</h4>
-        <div className="overflow-x-auto rounded-xl border">
+        <div className="overflow-x-auto rounded-[24px] border border-slate-200/80 bg-white shadow-sm">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b bg-secondary/50 text-left text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">
-                <th className="sticky top-0 z-10 bg-white p-2.5">Day</th>
-                <th className="sticky top-0 z-10 bg-white p-2.5 text-center">PDF</th>
-                <th className="sticky top-0 z-10 bg-white p-2.5 text-center">CSV</th>
-                <th className="sticky top-0 z-10 bg-white p-2.5 text-center">Matches</th>
-                <th className="sticky top-0 z-10 bg-white p-2.5 text-center">Mismatches</th>
-                <th className="sticky top-0 z-10 bg-white p-2.5 text-center">Rate</th>
+              <tr className="border-b border-slate-200 bg-slate-50 text-left text-[11px] text-slate-500 font-semibold uppercase tracking-[0.16em]">
+                <th className="sticky top-0 z-10 bg-slate-50 p-3">Day</th>
+                <th className="sticky top-0 z-10 bg-slate-50 p-3 text-center">PDF</th>
+                <th className="sticky top-0 z-10 bg-slate-50 p-3 text-center">CSV</th>
+                <th className="sticky top-0 z-10 bg-slate-50 p-3 text-center">Matches</th>
+                <th className="sticky top-0 z-10 bg-slate-50 p-3 text-center">Mismatches</th>
+                <th className="sticky top-0 z-10 bg-slate-50 p-3 text-center">Rate</th>
               </tr>
             </thead>
             <tbody>
@@ -1149,14 +1164,14 @@ function SummaryView({ comparison }: { comparison: ScheduleComparisonResult }) {
                     <td className="p-2.5 text-center text-emerald-700 font-semibold text-xs">{day.matches}</td>
                     <td className="p-2.5 text-center text-amber-900 font-semibold text-xs">{day.mismatches}</td>
                     <td className="p-2.5 text-center">
-                      <Badge
+                      <span
                         className={cn(
-                          'border-0 text-[10px]',
+                          'inline-flex min-w-[56px] justify-center rounded-full px-2 py-1 text-[10px] font-semibold',
                           rate >= 90 ? 'bg-emerald-100 text-emerald-700' : rate >= 70 ? 'bg-amber-100 text-amber-800' : 'bg-amber-200/80 text-amber-900'
                         )}
                       >
                         {rate}%
-                      </Badge>
+                      </span>
                     </td>
                   </tr>
                 );
@@ -1170,24 +1185,21 @@ function SummaryView({ comparison }: { comparison: ScheduleComparisonResult }) {
         <h4 className="font-display font-semibold mb-3 text-sm">Class Type Breakdown</h4>
         <div className="grid gap-2">
           {classBreakdown.map(([name, stats]) => (
-            <div
-              key={name}
-              className="flex items-center gap-3 p-2.5 rounded-xl border border-border/70 bg-white/70 backdrop-blur-sm shadow-soft hover:shadow-card transition-all"
-            >
+            <div key={name} className="flex items-center gap-3 p-3 rounded-2xl border border-slate-200/80 bg-gradient-to-r from-white to-slate-50/70 shadow-sm transition-all hover:shadow-md">
               <span className="font-medium text-xs flex-1">{name}</span>
               <div className="flex gap-1.5 text-xs">
                 {stats.matches > 0 && (
-                  <Badge variant="outline" className="text-[10px] bg-white/70 border-blue-200 text-blue-800">
+                  <Badge variant="outline" className="text-[10px] rounded-full bg-white border-emerald-200 text-emerald-700">
                     {stats.matches} <CheckCircle2 className="w-3 h-3 ml-1" />
                   </Badge>
                 )}
                 {stats.mismatches > 0 && (
-                  <Badge variant="outline" className="text-[10px] bg-white/70 border-slate-300 text-slate-800">
+                  <Badge variant="outline" className="text-[10px] rounded-full bg-white border-amber-200 text-amber-900">
                     {stats.mismatches} <XCircle className="w-3 h-3 ml-1" />
                   </Badge>
                 )}
                 {stats.missing > 0 && (
-                  <Badge variant="outline" className="text-[10px] bg-white/70 border-slate-300 text-slate-700">
+                  <Badge variant="outline" className="text-[10px] rounded-full bg-white border-slate-200 text-slate-700">
                     {stats.missing} <AlertTriangle className="w-3 h-3 ml-1" />
                   </Badge>
                 )}

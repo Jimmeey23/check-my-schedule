@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { FileUploadZone } from '@/components/FileUploadZone';
 import { ScheduleViewer } from '@/components/ScheduleViewer';
-import { ComparisonView } from '@/components/ComparisonView';
 import { PdfSourceEditorTab } from '@/components/PdfSourceEditorTab';
 import { SideBySideViewer } from '@/components/SideBySideViewer';
 import { MomenceTab } from '@/components/MomenceTab';
@@ -38,6 +37,8 @@ function revokePreviewUrl(url?: string) {
   }
 }
 
+const DEFAULT_COMPARE_LOCATION = 'kwality house kemps corner';
+
 const Index = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
@@ -53,6 +54,15 @@ const Index = () => {
   const [persistenceReady, setPersistenceReady] = useState(false);
   const pdfPreviewUrlsRef = useRef<Record<string, string>>({});
   const pdfSchedulesRef = useRef<Map<string, WeekSchedule>>(new Map());
+
+  const completedPdfUploads = useMemo(
+    () => uploadedFiles.filter(file => file.type === 'pdf' && file.status === 'completed'),
+    [uploadedFiles]
+  );
+  const completedCsvUploads = useMemo(
+    () => uploadedFiles.filter(file => file.type === 'csv' && file.status === 'completed'),
+    [uploadedFiles]
+  );
 
   const sharedLocationFilter = useMemo(
     () => normalizeLocationFilterValue(searchParams.get(LOCATION_QUERY_PARAM)),
@@ -164,6 +174,21 @@ const Index = () => {
     setSearchParams(current => updateLocationSearchParams(current, location));
   }, [setSearchParams]);
 
+  const defaultLocationFilter = useMemo(() => {
+    if (completedCsvUploads.length !== 1) return 'all';
+
+    if (completedPdfUploads.length === 1) {
+      const singlePdfLocation = completedPdfUploads[0]?.location || pdfLocations[0];
+      return normalizeLocation(singlePdfLocation) || singlePdfLocation || 'all';
+    }
+
+    if (completedPdfUploads.length === 2) {
+      return normalizeLocation(DEFAULT_COMPARE_LOCATION) || DEFAULT_COMPARE_LOCATION;
+    }
+
+    return 'all';
+  }, [completedCsvUploads, completedPdfUploads, pdfLocations]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -218,6 +243,13 @@ const Index = () => {
   useEffect(() => {
     pdfSchedulesRef.current = pdfSchedules;
   }, [pdfSchedules]);
+
+  useEffect(() => {
+    if (defaultLocationFilter === 'all') return;
+    if (sharedLocationFilter !== 'all') return;
+
+    setSearchParams(current => updateLocationSearchParams(current, defaultLocationFilter));
+  }, [defaultLocationFilter, setSearchParams, sharedLocationFilter]);
 
   useEffect(() => {
     return () => {
@@ -355,7 +387,7 @@ const Index = () => {
         });
 
         void syncPdfSchedulesToSheet(nextPdfSchedules.values());
-        setActiveTab('pdf-files');
+        setActiveTab('side-by-side');
       }
     } catch (error) {
       console.error('File processing error:', error);
@@ -416,11 +448,12 @@ const Index = () => {
     setPdfClassDataByLocation(new Map());
     setPdfPreviewUrls({});
     setActiveTab('upload');
+    setSearchParams(current => updateLocationSearchParams(current, 'all'));
     void syncPdfSchedulesToSheet([]);
     clearPersistedUploadState().catch(error => {
       console.error('Failed to clear persisted upload state', error);
     });
-  }, [syncPdfSchedulesToSheet]);
+  }, [setSearchParams, syncPdfSchedulesToSheet]);
 
   const handleUpdatePdfSchedule = useCallback((fileId: string, updatedSchedule: WeekSchedule) => {
     const targetFile = uploadedFiles.find(file => file.id === fileId && file.type === 'pdf');
@@ -512,23 +545,20 @@ const Index = () => {
               <TabsTrigger value="upload" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all">
                 <Upload className="w-4 h-4" /> Upload
               </TabsTrigger>
+              <TabsTrigger value="csv" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all" disabled={!hasCsv}>
+                <FileSpreadsheet className="w-4 h-4" /> CSV
+                {hasCsv && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
+              </TabsTrigger>
               <TabsTrigger value="pdf" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all" disabled={!hasPdf}>
                 <FileText className="w-4 h-4" /> PDF
                 {hasPdf && <Badge variant="secondary" className="text-xs h-5 px-1.5 bg-red-100 text-red-700 border-red-200">{pdfSchedules.size}</Badge>}
               </TabsTrigger>
               <TabsTrigger value="pdf-files" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all" disabled={!hasPdf}>
-                <Eye className="w-4 h-4" /> PDF Files
+                <Eye className="w-4 h-4" /> Editor
                 {hasPdf && <Badge variant="secondary" className="text-xs h-5 px-1.5 bg-red-100 text-red-700 border-red-200">{pdfSchedules.size}</Badge>}
               </TabsTrigger>
-              <TabsTrigger value="csv" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all" disabled={!hasCsv}>
-                <FileSpreadsheet className="w-4 h-4" /> CSV
-                {hasCsv && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
-              </TabsTrigger>
-              <TabsTrigger value="side-by-side" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all" disabled={!(csvClassData && aggregatedPdfClassData)}>
-                <GitCompare className="w-4 h-4" /> Side-by-Side
-              </TabsTrigger>
-              <TabsTrigger value="comparison" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all" disabled={!(csvClassData && aggregatedPdfClassData)}>
-                <GitCompare className="w-4 h-4" /> Comparison
+              <TabsTrigger value="side-by-side" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all">
+                <GitCompare className="w-4 h-4" /> Compare
               </TabsTrigger>
               <TabsTrigger value="momence" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all">
                 <Globe className="w-4 h-4" /> Momence
@@ -582,8 +612,8 @@ const Index = () => {
                 CSV: {hasCsv ? 'Ready' : 'Not uploaded'}
               </div>
               {canCompare && (
-                <Button size="sm" onClick={() => setActiveTab('comparison')} className="gap-2 ml-auto">
-                  <GitCompare className="w-4 h-4" /> Compare Now
+                <Button size="sm" onClick={() => setActiveTab('side-by-side')} className="gap-2 ml-auto">
+                  <GitCompare className="w-4 h-4" /> Open Compare
                 </Button>
               )}
             </div>
@@ -592,29 +622,6 @@ const Index = () => {
           <TabsContent value="upload" className="animate-fade-in">
             <div className="surface-card gradient-border-top p-8">
               <FileUploadZone onUpload={handleUpload} uploadedFiles={uploadedFiles} onRemoveFile={handleRemoveFile} />
-            </div>
-          </TabsContent>
-
-          <TabsContent value="pdf" className="animate-fade-in">
-            <div className="surface-card gradient-border-top p-8">
-              {hasPdf ? (
-                <div className="space-y-6">
-                  {viewPdfSchedule && (
-                    <ScheduleViewer
-                      schedule={viewPdfSchedule}
-                      title={`PDF Schedule — ${viewPdfSchedule.location}`}
-                      locationFilter={sharedLocationFilter}
-                    />
-                  )}
-                  {!viewPdfSchedule && sharedLocationFilter !== 'all' && (
-                    <div className="text-center py-16 text-slate-500">
-                      No PDF schedule found for `{sharedLocationFilter}`.
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="text-center py-16 text-slate-500">Upload a PDF to view the schedule</div>
-              )}
             </div>
           </TabsContent>
 
@@ -634,6 +641,31 @@ const Index = () => {
             </div>
           </TabsContent>
 
+          <TabsContent value="pdf" className="animate-fade-in">
+            <div className="surface-card gradient-border-top p-8">
+              {hasPdf ? (
+                <div className="space-y-6">
+                  {viewPdfSchedule && (
+                    <ScheduleViewer
+                      schedule={viewPdfSchedule}
+                      title={`PDF Schedule — ${viewPdfSchedule.location}`}
+                      locationFilter={sharedLocationFilter}
+                      defaultViewMode="list"
+                      groupListByDay
+                    />
+                  )}
+                  {!viewPdfSchedule && sharedLocationFilter !== 'all' && (
+                    <div className="text-center py-16 text-slate-500">
+                      No PDF schedule found for `{sharedLocationFilter}`.
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-16 text-slate-500">Upload a PDF to view the schedule</div>
+              )}
+            </div>
+          </TabsContent>
+
           <TabsContent value="pdf-files" className="animate-fade-in">
             <div className="surface-card gradient-border-top p-6">
               <PdfSourceEditorTab
@@ -641,18 +673,6 @@ const Index = () => {
                 previewUrls={pdfPreviewUrls}
                 onUpdateSchedule={handleUpdatePdfSchedule}
               />
-            </div>
-          </TabsContent>
-
-          <TabsContent value="comparison" className="animate-fade-in">
-            <div className="surface-card gradient-border-top p-8">
-              {comparison ? (
-                <div className="space-y-6">
-                  <ComparisonView comparison={comparison} locationFilter={sharedLocationFilter} />
-                </div>
-              ) : (
-                <div className="text-center py-16 text-slate-500">Upload both PDF and CSV files to compare</div>
-              )}
             </div>
           </TabsContent>
 

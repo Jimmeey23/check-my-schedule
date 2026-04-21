@@ -29,6 +29,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Building2,
+  SlidersHorizontal,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 interface SideBySideViewerProps {
@@ -40,7 +43,10 @@ interface SideBySideViewerProps {
 
 type RowStatus = 'match' | 'mismatch' | 'csv-only' | 'pdf-only';
 type IssueType = 'trainer-mismatch' | 'class-mismatch' | 'time-mismatch' | 'location-mismatch' | 'csv-only' | 'pdf-only';
-type QuickFilter = 'all' | 'matches' | IssueType;
+type QuickFilter = string; // 'all' | 'matches' | 'mismatches' | location string
+type GroupBy = 'day' | 'location' | 'both' | 'none';
+type GroupSection = { key: string; label: string; subLabel?: string; rows: AlignedRow[] };
+type GroupMetrics = { matches: number; issues: number; csvOnly: number; pdfOnly: number };
 
 interface AlignedRow {
   day: string;
@@ -113,75 +119,86 @@ function getRowStatus(row: ComparisonAlignedRow): RowStatus {
   return 'mismatch';
 }
 
-function rowMatchesQuickFilter(row: AlignedRow, filter: QuickFilter): boolean {
+function rowMatchesQuickFilter(row: AlignedRow, filter: string): boolean {
   if (filter === 'all') return true;
   if (filter === 'matches') return row.matchStatus === 'match';
-  return row.issueTypes.includes(filter);
+  if (filter === 'mismatches') return row.matchStatus !== 'match';
+  const rowLoc = normalizeLocation(row.location) || row.location;
+  return rowLoc === filter || row.location === filter;
 }
 
-function getStatusInfo(row: AlignedRow): { icon: React.ReactNode; label: string; color: string } {
+function getStatusInfo(row: AlignedRow): { icon: React.ReactNode; label: string; color: string; badgeClass: string } {
   if (row.matchStatus === 'match') {
     return {
-      icon: <CheckCircle2 className="w-4 h-4 text-blue-800" />,
+      icon: <CheckCircle2 className="w-4 h-4 text-emerald-700" />,
       label: 'Match',
       color: 'text-slate-700',
+      badgeClass: 'border-emerald-200 bg-emerald-50/80',
     };
   }
 
   if (row.matchStatus === 'csv-only') {
     return {
-      icon: <FileSpreadsheet className="w-4 h-4 text-slate-500" />,
+      icon: <FileSpreadsheet className="w-4 h-4 text-blue-700" />,
       label: 'CSV Only',
       color: 'text-slate-700',
+      badgeClass: 'border-blue-200 bg-blue-50/80',
     };
   }
 
   if (row.matchStatus === 'pdf-only') {
     return {
-      icon: <FileText className="w-4 h-4 text-slate-500" />,
+      icon: <FileText className="w-4 h-4 text-violet-700" />,
       label: 'PDF Only',
       color: 'text-slate-700',
+      badgeClass: 'border-violet-200 bg-violet-50/80',
     };
   }
 
   if (row.issueTypes.length > 1) {
     return {
-      icon: <AlertTriangle className="w-4 h-4 text-blue-700" />,
+      icon: <AlertTriangle className="w-4 h-4 text-amber-700" />,
       label: 'Multiple',
       color: 'text-slate-800',
+      badgeClass: 'border-amber-200 bg-amber-50/80',
     };
   }
 
   switch (row.issueTypes[0]) {
     case 'trainer-mismatch':
       return {
-        icon: <Users className="w-4 h-4 text-blue-700" />,
+        icon: <Users className="w-4 h-4 text-amber-700" />,
         label: 'Trainer',
         color: 'text-slate-800',
+        badgeClass: 'border-amber-200 bg-amber-50/80',
       };
     case 'class-mismatch':
       return {
-        icon: <BookOpen className="w-4 h-4 text-blue-700" />,
+        icon: <BookOpen className="w-4 h-4 text-amber-700" />,
         label: 'Class',
         color: 'text-slate-800',
+        badgeClass: 'border-amber-200 bg-amber-50/80',
       };
     case 'time-mismatch':
       return {
-        icon: <Clock className="w-4 h-4 text-blue-700" />,
+        icon: <Clock className="w-4 h-4 text-amber-700" />,
         label: 'Time',
         color: 'text-slate-800',
+        badgeClass: 'border-amber-200 bg-amber-50/80',
       };
     case 'location-mismatch':
       return {
-        icon: <Building2 className="w-4 h-4 text-blue-700" />,
+        icon: <Building2 className="w-4 h-4 text-amber-700" />,
         label: 'Location',
         color: 'text-slate-800',
+        badgeClass: 'border-amber-200 bg-amber-50/80',
       };
     default:
       return {
-        icon: <AlertTriangle className="w-4 h-4 text-blue-700" />,
+        icon: <AlertTriangle className="w-4 h-4 text-amber-700" />,
         label: 'Mismatch',
         color: 'text-slate-800',
+        badgeClass: 'border-amber-200 bg-amber-50/80',
       };
   }
 }
@@ -214,16 +231,25 @@ function getCombinedLocationLabel(row: AlignedRow): string {
   return `${csvLocation} ↔ ${pdfLocation}`;
 }
 
+function getGroupMetrics(rows: AlignedRow[]): GroupMetrics {
+  return {
+    matches: rows.filter(row => row.matchStatus === 'match').length,
+    issues: rows.filter(row => row.matchStatus === 'mismatch').length,
+    csvOnly: rows.filter(row => row.matchStatus === 'csv-only').length,
+    pdfOnly: rows.filter(row => row.matchStatus === 'pdf-only').length,
+  };
+}
+
 export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter = 'all' }: SideBySideViewerProps) {
-  const getAutoInputWidth = (value: string | null | undefined, minChars = 8) => ({
-    width: `${Math.max((value || '').length + 1, minChars)}ch`,
-  });
   const [filters, setFilters] = useState<FilterState>({ day: [], location: [], trainer: [], className: [] });
   const [editablePdfData, setEditablePdfData] = useState<PdfClassData[]>([]);
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
   const [copied, setCopied] = useState(false);
-  const [showOnlyMismatches, setShowOnlyMismatches] = useState(false);
+  const [showOnlyMismatches, setShowOnlyMismatches] = useState(true);
   const [activeMismatchIndex, setActiveMismatchIndex] = useState(0);
+  const [groupBy, setGroupBy] = useState<GroupBy>('none');
+  const [showFilters, setShowFilters] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (pdfData) {
@@ -280,54 +306,73 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
       });
   }, [comparisonRows, filters, locationFilter, pdfData, pdfLookup]);
 
-  const allDays = useMemo(() => {
-    return Array.from(new Set(allAlignedData.map(row => row.day))).sort((a, b) => {
-      const aIndex = DAY_ORDER.indexOf(a);
-      const bIndex = DAY_ORDER.indexOf(b);
-      if (aIndex === -1 && bIndex === -1) return a.localeCompare(b);
-      if (aIndex === -1) return 1;
-      if (bIndex === -1) return -1;
-      return aIndex - bIndex;
-    });
-  }, [allAlignedData]);
-
-  const rowsByDay = useMemo(() => {
-    const grouped = new Map<string, AlignedRow[]>();
-    allAlignedData.forEach(row => {
-      const bucket = grouped.get(row.day) || [];
-      bucket.push(row);
-      grouped.set(row.day, bucket);
-    });
-
-    grouped.forEach(rows => {
-      rows.sort((a, b) => a.sortTime.localeCompare(b.sortTime));
-    });
-
-    return grouped;
+  const allLocations = useMemo(() => {
+    const locs = new Set<string>();
+    allAlignedData.forEach(row => { if (row.location) locs.add(row.location); });
+    return Array.from(locs).sort();
   }, [allAlignedData]);
 
   const totalMatches = allAlignedData.filter(row => row.matchStatus === 'match').length;
-  const totalMismatches = allAlignedData.filter(row => row.matchStatus === 'mismatch').length;
-  const totalTrainerMismatch = allAlignedData.filter(row => row.issueTypes.includes('trainer-mismatch')).length;
-  const totalClassMismatch = allAlignedData.filter(row => row.issueTypes.includes('class-mismatch')).length;
-  const totalTimeMismatch = allAlignedData.filter(row => row.issueTypes.includes('time-mismatch')).length;
-  const totalLocationMismatch = allAlignedData.filter(row => row.issueTypes.includes('location-mismatch')).length;
-  const totalCsvOnly = allAlignedData.filter(row => row.matchStatus === 'csv-only').length;
-  const totalPdfOnly = allAlignedData.filter(row => row.matchStatus === 'pdf-only').length;
+  const totalNonMatches = allAlignedData.filter(row => row.matchStatus !== 'match').length;
 
-  const displayRowsByDay = allDays.map(day => {
-    let rows = [...(rowsByDay.get(day) || [])];
+  const sortedRows = useMemo(() => {
+    return [...allAlignedData].sort((a, b) => {
+      const ai = DAY_ORDER.indexOf(a.day);
+      const bi = DAY_ORDER.indexOf(b.day);
+      if (ai !== bi) { if (ai === -1) return 1; if (bi === -1) return -1; return ai - bi; }
+      return a.sortTime.localeCompare(b.sortTime);
+    });
+  }, [allAlignedData]);
 
-    if (showOnlyMismatches) {
-      rows = rows.filter(row => row.matchStatus !== 'match');
+  const filteredRows = useMemo(() => {
+    return sortedRows.filter(row => {
+      if (showOnlyMismatches && row.matchStatus === 'match') return false;
+      return rowMatchesQuickFilter(row, quickFilter);
+    });
+  }, [sortedRows, showOnlyMismatches, quickFilter]);
+
+  const groupedSections = useMemo((): GroupSection[] => {
+    if (groupBy === 'none') {
+      return [{ key: 'all', label: '', rows: filteredRows }];
     }
+    if (groupBy === 'day') {
+      const map = new Map<string, AlignedRow[]>();
+      filteredRows.forEach(row => { const b = map.get(row.day) || []; b.push(row); map.set(row.day, b); });
+      return Array.from(map.entries()).map(([day, rows]) => ({ key: day, label: day, rows }));
+    }
+    if (groupBy === 'location') {
+      const map = new Map<string, AlignedRow[]>();
+      filteredRows.forEach(row => {
+        const loc = row.location || 'Unknown';
+        const b = map.get(loc) || []; b.push(row); map.set(loc, b);
+      });
+      return Array.from(map.entries())
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([loc, rows]) => ({ key: loc, label: loc, rows }));
+    }
+    // both: day > location
+    const dayLocMap = new Map<string, Map<string, AlignedRow[]>>();
+    filteredRows.forEach(row => {
+      const locMap = dayLocMap.get(row.day) || new Map<string, AlignedRow[]>();
+      const loc = row.location || 'Unknown';
+      const b = locMap.get(loc) || []; b.push(row); locMap.set(loc, b);
+      dayLocMap.set(row.day, locMap);
+    });
+    const sections: GroupSection[] = [];
+    const sortedDays = Array.from(dayLocMap.keys()).sort((a, b) => {
+      const ai = DAY_ORDER.indexOf(a), bi = DAY_ORDER.indexOf(b);
+      return ai === -1 ? 1 : bi === -1 ? -1 : ai - bi;
+    });
+    sortedDays.forEach(day => {
+      const locMap = dayLocMap.get(day)!;
+      Array.from(locMap.entries()).sort((a, b) => a[0].localeCompare(b[0])).forEach(([loc, rows]) => {
+        sections.push({ key: `${day}-${loc}`, label: day, subLabel: loc, rows });
+      });
+    });
+    return sections;
+  }, [groupBy, filteredRows]);
 
-    rows = rows.filter(row => rowMatchesQuickFilter(row, quickFilter));
-
-    return { day, rows };
-  });
-
-  const visibleRows = displayRowsByDay.flatMap(group => group.rows);
+  const visibleRows = filteredRows;
   const mismatchRows = visibleRows.filter(row => row.matchStatus !== 'match');
   const mismatchIndexByRow = new Map<AlignedRow, number>();
   mismatchRows.forEach((row, index) => mismatchIndexByRow.set(row, index));
@@ -540,232 +585,290 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
     );
   }
 
-  return (
-    <div className="flex flex-col h-full space-y-4">
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h3 className="text-sm font-semibold text-slate-900 mb-1">PDF data is editable</h3>
-        <p className="text-xs text-slate-600">
-          This tab now uses the same comparison rows as the Comparison tab. Click any PDF cell (Time, Class, Trainer) to edit manually, or use Auto-Correct to apply CSV values to mismatch rows.
-        </p>
-      </div>
+  const totalCols = groupBy === 'none' ? 10 : groupBy === 'both' ? 8 : 9;
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold text-slate-900">Mismatch Focus</p>
-            <p className="text-xs text-slate-600">
-              {mismatchRows.length} highlighted issue{mismatchRows.length === 1 ? '' : 's'} out of {visibleRows.length} visible rows
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
+  return (
+    <div className="flex min-h-0 flex-col h-full gap-4">
+
+      {/* Top toolbar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-slate-200/80 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-800 px-4 py-3 text-white shadow-md">
+        <div className="flex items-center gap-4">
+          <p className="text-xs text-slate-300">
+            {visibleRows.length} rows ·{' '}
+            <span className="text-amber-200 font-medium">{mismatchRows.length} issues</span>
+            {' '}· {totalMatches} matches
+          </p>
+          <div className="flex items-center gap-1 border-l border-slate-700 pl-4">
             <Button
               size="sm"
-              variant="outline"
+              variant="ghost"
               onClick={() => scrollToMismatch(activeMismatchIndex - 1)}
               disabled={mismatchRows.length === 0}
-              className="h-8 px-2.5"
+              className="h-7 w-7 rounded-full p-0 text-white hover:bg-white/10 hover:text-white"
             >
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="w-3.5 h-3.5" />
             </Button>
-            <div className="text-xs font-semibold text-slate-700 min-w-[56px] text-center">
-              {mismatchRows.length > 0 ? `${activeMismatchIndex + 1}/${mismatchRows.length}` : '0/0'}
-            </div>
+            <span className="text-xs font-mono text-slate-200 min-w-[44px] text-center">
+              {mismatchRows.length > 0 ? `${activeMismatchIndex + 1}/${mismatchRows.length}` : '—'}
+            </span>
             <Button
               size="sm"
-              variant="outline"
+              variant="ghost"
               onClick={() => scrollToMismatch(activeMismatchIndex + 1)}
               disabled={mismatchRows.length === 0}
-              className="h-8 px-2.5"
+              className="h-7 w-7 rounded-full p-0 text-white hover:bg-white/10 hover:text-white"
             >
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight className="w-3.5 h-3.5" />
             </Button>
           </div>
         </div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowFilters(f => !f)}
+            className={`h-8 rounded-full text-xs gap-1.5 text-white hover:bg-white/10 hover:text-white ${showFilters ? 'bg-white/10' : ''}`}
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+            Filters
+            {showFilters ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          </Button>
+          <div className="w-px h-5 bg-slate-700" />
+          <Button variant="outline" size="sm" onClick={copyMismatchesInTableFormat} className="h-8 rounded-full border-white/15 bg-white/5 text-white hover:bg-white/10 text-xs gap-1.5">
+            {copied ? <Check className="w-3.5 h-3.5 text-emerald-300" /> : <Copy className="w-3.5 h-3.5" />}
+            Copy
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const c = generateCSVExport();
+              downloadFile(c, 'schedule-comparison.csv', 'text/csv');
+              toast({ title: 'Exported!', description: 'Comparison exported to CSV' });
+            }}
+            className="h-8 rounded-full border-white/15 bg-white/5 text-white hover:bg-white/10 text-xs gap-1.5"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Export
+          </Button>
+          <Button variant="outline" size="sm" onClick={applyAutoCorrections} className="h-8 rounded-full border-white/15 bg-white text-slate-900 hover:bg-slate-100 text-xs gap-1.5">
+            <Wand2 className="w-3.5 h-3.5" />
+            Auto-Correct
+          </Button>
+          <Button variant="outline" size="sm" onClick={exportPdfData} className="h-8 rounded-full border-white/15 bg-white/5 text-white hover:bg-white/10 text-xs gap-1.5">
+            <Download className="w-3.5 h-3.5" />
+            Export PDF
+          </Button>
+        </div>
       </div>
 
-      <FilterSection data={csvData} filters={filters} onFilterChange={handleFilterChange} />
+      {/* Collapsible filters */}
+      {showFilters && (
+        <FilterSection data={csvData} filters={filters} onFilterChange={handleFilterChange} />
+      )}
 
-      <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-        <span className="text-sm font-medium text-slate-600 mr-2 flex items-center">Quick Filter:</span>
-
+      {/* Controls: quick filters + show mismatches + group by */}
+      <div className="flex flex-wrap items-center gap-2 rounded-[24px] border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/80 px-3 py-3 shadow-sm">
+        <Button
+          variant={showOnlyMismatches ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setShowOnlyMismatches(!showOnlyMismatches)}
+          className="h-8 rounded-full text-xs gap-1.5"
+        >
+          <AlertTriangle className="w-3.5 h-3.5" />
+          {showOnlyMismatches ? 'Show All' : 'Issues Only'}
+        </Button>
+        <div className="w-px h-5 bg-slate-200" />
         {[
-          { key: 'all' as QuickFilter, label: 'All', count: totalMatches + totalMismatches + totalCsvOnly + totalPdfOnly },
-          { key: 'matches' as QuickFilter, label: 'Matches', count: totalMatches },
-          { key: 'trainer-mismatch' as QuickFilter, label: 'Trainer Mismatch', count: totalTrainerMismatch },
-          { key: 'class-mismatch' as QuickFilter, label: 'Class Mismatch', count: totalClassMismatch },
-          { key: 'time-mismatch' as QuickFilter, label: 'Time Mismatch', count: totalTimeMismatch },
-          { key: 'location-mismatch' as QuickFilter, label: 'Location Mismatch', count: totalLocationMismatch },
-          { key: 'csv-only' as QuickFilter, label: 'Not in PDF', count: totalCsvOnly },
-          { key: 'pdf-only' as QuickFilter, label: 'Not in CSV', count: totalPdfOnly },
+          { key: 'all', label: `All (${allAlignedData.length})` },
+          { key: 'matches', label: `Matches (${totalMatches})` },
+          { key: 'mismatches', label: `Issues (${totalNonMatches})` },
+          ...allLocations.map(loc => ({
+            key: loc,
+            label: `${loc} (${allAlignedData.filter(r => r.location === loc).length})`,
+          })),
         ].map(btn => (
           <Button
             key={btn.key}
             variant={quickFilter === btn.key ? 'default' : 'outline'}
             size="sm"
             onClick={() => setQuickFilter(btn.key)}
-            className="gap-1"
+            className={`h-8 rounded-full px-3 text-xs whitespace-nowrap ${quickFilter === btn.key ? 'shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
           >
-            {btn.label} ({btn.count})
+            {btn.label}
           </Button>
         ))}
+        <div className="ml-auto flex items-center gap-1">
+          <span className="text-xs text-slate-400 mr-1">Group:</span>
+          {(
+            [
+              { key: 'day', label: 'Day' },
+              { key: 'location', label: 'Location' },
+              { key: 'both', label: 'Day + Location' },
+              { key: 'none', label: 'None' },
+            ] as const
+          ).map(opt => (
+            <Button
+              key={opt.key}
+              variant={groupBy === opt.key ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setGroupBy(opt.key)}
+              className="h-8 rounded-full text-xs"
+            >
+              {opt.label}
+            </Button>
+          ))}
+        </div>
       </div>
 
-      <div className="flex gap-2 flex-wrap">
-        <Button
-          variant={showOnlyMismatches ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => setShowOnlyMismatches(!showOnlyMismatches)}
-          className="gap-2"
-        >
-          <AlertTriangle className="w-4 h-4" />
-          {showOnlyMismatches ? 'Show All' : 'Show Only Mismatches'}
-        </Button>
-
-        <Button variant="outline" onClick={copyMismatchesInTableFormat} size="sm" className="gap-2">
-          {copied ? <Check className="w-4 h-4 text-blue-800" /> : <Copy className="w-4 h-4" />}
-          Copy Mismatches Table
-        </Button>
-
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            const csvContent = generateCSVExport();
-            downloadFile(csvContent, 'schedule-comparison.csv', 'text/csv');
-            toast({ title: 'Exported!', description: 'Comparison exported to CSV' });
-          }}
-          className="gap-2"
-        >
-          <Download className="w-4 h-4" />
-          Export Comparison
-        </Button>
-
-        <Button variant="default" size="sm" onClick={applyAutoCorrections} className="gap-2">
-          <Wand2 className="w-4 h-4" />
-          Auto-Correct PDF from CSV
-        </Button>
-
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={exportPdfData}
-          className="gap-2 border-slate-300 text-slate-700 hover:bg-slate-50"
-        >
-          <Download className="w-4 h-4" />
-          Export Edited PDF Data
-        </Button>
-      </div>
-
-      <div className="flex-1 overflow-auto surface-card p-0 overflow-hidden">
-        <table className="table-premium table-head-dark table-compact table-side-by-side text-sm">
+      {/* Table */}
+      <div className="min-h-0 h-[70vh] flex-1 overflow-x-auto overflow-y-auto rounded-[28px] border border-slate-200/80 bg-white shadow-sm">
+        <table className="min-w-[1320px] w-max border-collapse text-[13px] leading-5">
           <thead>
-            <tr className="gradient-header-dark text-white sticky top-0 z-10">
-              <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Day</th>
-              <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Location</th>
-              <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">CSV Time</th>
-              <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">CSV Class</th>
-              <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">CSV Trainer</th>
-              <th className="px-3 py-2 text-center font-semibold whitespace-nowrap">Status</th>
-              <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">PDF Time</th>
-              <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">PDF Class</th>
-              <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">PDF Trainer</th>
+            <tr className="text-slate-500">
+              <th rowSpan={2} className="sticky top-0 z-30 h-[96px] min-w-[48px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-4 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">#</th>
+              {(groupBy === 'none' || groupBy === 'location') && (
+                <th rowSpan={2} className="sticky top-0 z-30 h-[96px] min-w-[112px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-5 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Day</th>
+              )}
+              {(groupBy === 'none' || groupBy === 'day') && (
+                <th rowSpan={2} className="sticky top-0 z-30 h-[96px] min-w-[220px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-5 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Location</th>
+              )}
+              <th colSpan={3} className="sticky top-0 z-20 h-[48px] border-r border-slate-200/40 bg-[#123a73] px-3 py-0 text-center text-[11px] font-black tracking-[0.24em] uppercase text-white align-middle">CSV</th>
+              <th rowSpan={2} className="sticky top-0 z-30 h-[96px] min-w-[128px] border-x border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-4 py-0 text-center text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Status</th>
+              <th colSpan={3} className="sticky top-0 z-20 h-[48px] border-r border-slate-200/40 bg-[#123a73] px-3 py-0 text-center text-[11px] font-black tracking-[0.24em] uppercase text-white align-middle">PDF</th>
+            </tr>
+            <tr className="z-10 text-slate-500">
+              <th className="sticky top-[48px] z-20 h-[48px] min-w-[110px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-5 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Time</th>
+              <th className="sticky top-[48px] z-20 h-[48px] min-w-[260px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-5 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Class</th>
+              <th className="sticky top-[48px] z-20 h-[48px] min-w-[240px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-5 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Trainer</th>
+              <th className="sticky top-[48px] z-20 h-[48px] min-w-[110px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-5 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Time</th>
+              <th className="sticky top-[48px] z-20 h-[48px] min-w-[260px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-5 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Class</th>
+              <th className="sticky top-[48px] z-20 h-[48px] min-w-[240px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-5 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Trainer</th>
             </tr>
           </thead>
           <tbody>
-            {allDays.map(day => {
-              const displayData = displayRowsByDay.find(group => group.day === day)?.rows || [];
-
-              return displayData.map((row, idx) => {
-                const statusInfo = getStatusInfo(row);
-                const isMatch = row.matchStatus === 'match';
-                const isTrainerMismatch = row.issueTypes.includes('trainer-mismatch');
-                const isClassMismatch = row.issueTypes.includes('class-mismatch');
-                const isTimeMismatch = row.issueTypes.includes('time-mismatch');
-                const isLocationMismatch = row.issueTypes.includes('location-mismatch');
-                const isPdfOnly = row.matchStatus === 'pdf-only';
-                const isCsvOnly = row.matchStatus === 'csv-only';
-                const mismatchIndex = mismatchIndexByRow.get(row);
-                const isActiveMismatch = mismatchIndex !== undefined && mismatchIndex === activeMismatchIndex;
-                const editablePdfRow = getEditablePdfRow(row.pdfClass);
-
-                const rowBgClass = isMatch
-                  ? 'bg-emerald-50/35 hover:bg-emerald-50 border-l-4 border-l-emerald-300'
-                  : (isPdfOnly || isCsvOnly)
-                    ? 'bg-slate-50 hover:bg-slate-100 border-l-4 border-l-slate-400'
-                    : row.issueTypes.length > 1
-                      ? 'bg-rose-50/80 hover:bg-rose-50 border-l-4 border-l-rose-600'
-                      : isTrainerMismatch
-                        ? 'bg-amber-50/85 hover:bg-amber-50 border-l-4 border-l-amber-500'
-                        : isClassMismatch
-                          ? 'bg-fuchsia-50/85 hover:bg-fuchsia-50 border-l-4 border-l-fuchsia-500'
-                          : isTimeMismatch
-                            ? 'bg-sky-50/85 hover:bg-sky-50 border-l-4 border-l-sky-500'
-                            : isLocationMismatch
-                              ? 'bg-violet-50/85 hover:bg-violet-50 border-l-4 border-l-violet-500'
-                              : 'bg-rose-50/80 hover:bg-rose-50 border-l-4 border-l-rose-600';
-
-                return (
-                  <tr
-                    key={`${day}-${idx}`}
-                    data-mismatch-index={mismatchIndex !== undefined ? mismatchIndex : undefined}
-                    className={`border-b border-slate-200/70 transition-colors ${rowBgClass} ${isActiveMismatch ? 'ring-2 ring-rose-300 ring-inset shadow-[inset_0_0_0_1px_rgba(251,113,133,0.25)]' : ''}`}
-                  >
-                    <td className="px-3 py-2 font-semibold text-slate-900">{row.day}</td>
-                    <td className={`px-3 py-2 text-slate-700 ${isLocationMismatch ? 'bg-amber-100/70 font-semibold text-slate-900' : ''}`}>
-                      {getCombinedLocationLabel(row)}
-                    </td>
-                    <td className={`px-3 py-2 font-mono ${isTimeMismatch ? 'text-amber-800 font-semibold bg-amber-100/60' : 'text-slate-800'} ${!row.csvClass ? 'bg-slate-100/70 text-slate-400' : ''}`}>
-                      {row.csvClass?.time || '—'}
-                    </td>
-                    <td className={`px-3 py-2 whitespace-nowrap ${isClassMismatch ? 'text-slate-900 font-semibold bg-amber-100/70' : 'text-slate-800'} ${!row.csvClass ? 'bg-slate-100/70 text-slate-400' : ''}`}>
-                      {row.csvClass?.className || '—'}
-                    </td>
-                    <td className={`px-3 py-2 whitespace-nowrap ${isTrainerMismatch ? 'text-slate-900 font-semibold bg-amber-100/70' : 'text-slate-700'} ${!row.csvClass ? 'bg-slate-100/70 text-slate-400' : ''}`}>
-                      {row.csvClass?.trainer || '—'}
-                    </td>
-                    <td className="px-3 py-2 text-center bg-white/60">
-                      <div className="flex items-center justify-center gap-1">
-                        {statusInfo.icon}
-                        <span className={`text-xs font-medium ${statusInfo.color}`}>{statusInfo.label}</span>
+            {groupedSections.map(section => (
+              <React.Fragment key={section.key}>
+                {section.label && (
+                  <tr className="border-y border-slate-300 bg-slate-200/80">
+                    <td
+                      colSpan={totalCols}
+                      className="px-4 py-2.5"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setCollapsedGroups(current => {
+                            const next = new Set(current);
+                            if (next.has(section.key)) next.delete(section.key); else next.add(section.key);
+                            return next;
+                          })}
+                          className="flex items-center gap-2 text-xs font-bold text-slate-800 tracking-[0.16em] uppercase"
+                        >
+                          {collapsedGroups.has(section.key) ? <ChevronDown className="h-4 w-4 text-slate-600" /> : <ChevronUp className="h-4 w-4 text-slate-600" />}
+                          <span>
+                            {section.label}
+                            {section.subLabel && <span className="text-slate-500 font-semibold"> · {section.subLabel}</span>}
+                          </span>
+                        </button>
+                        {(() => {
+                          const metrics = getGroupMetrics(section.rows);
+                          return (
+                            <div className="flex flex-wrap items-center gap-2 text-[11px] font-medium text-slate-600">
+                              <span className="rounded-full border border-slate-300 bg-white px-2.5 py-0.5">{section.rows.length} rows</span>
+                              <span className="rounded-full border border-slate-300 bg-white px-2.5 py-0.5">{metrics.matches} match</span>
+                              <span className="rounded-full border border-slate-300 bg-white px-2.5 py-0.5">{metrics.issues} issue</span>
+                              {metrics.csvOnly > 0 && <span className="rounded-full border border-slate-300 bg-white px-2.5 py-0.5">{metrics.csvOnly} CSV-only</span>}
+                              {metrics.pdfOnly > 0 && <span className="rounded-full border border-slate-300 bg-white px-2.5 py-0.5">{metrics.pdfOnly} PDF-only</span>}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </td>
-                    <td className={`px-3 py-2 font-mono ${isTimeMismatch ? 'text-amber-800 font-semibold bg-amber-100/60' : 'text-slate-800'} ${!editablePdfRow ? 'bg-slate-100/70 text-slate-400' : ''}`}>
-                      {editablePdfRow ? (
-                        <input
-                          type="text"
-                          value={editablePdfRow.time}
-                          onChange={e => handleCellEdit(editablePdfRow.uniqueKey, 'time', e.target.value)}
-                          style={getAutoInputWidth(editablePdfRow.time, 8)}
-                          className="bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-[#0353A4] px-1 rounded"
-                        />
-                      ) : '—'}
-                    </td>
-                    <td className={`px-3 py-2 whitespace-nowrap ${isClassMismatch ? 'text-slate-900 font-semibold bg-amber-100/70' : 'text-slate-800'} ${!editablePdfRow ? 'bg-slate-100/70 text-slate-400' : ''}`}>
-                      {editablePdfRow ? (
-                        <input
-                          type="text"
-                          value={editablePdfRow.className}
-                          onChange={e => handleCellEdit(editablePdfRow.uniqueKey, 'className', e.target.value)}
-                          style={getAutoInputWidth(editablePdfRow.className, 18)}
-                          className="bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-[#0353A4] px-1 rounded"
-                        />
-                      ) : '—'}
-                    </td>
-                    <td className={`px-3 py-2 whitespace-nowrap ${isTrainerMismatch ? 'text-slate-900 font-semibold bg-amber-100/70' : 'text-slate-700'} ${!editablePdfRow ? 'bg-slate-100/70 text-slate-400' : ''}`}>
-                      {editablePdfRow ? (
-                        <input
-                          type="text"
-                          value={editablePdfRow.trainer}
-                          onChange={e => handleCellEdit(editablePdfRow.uniqueKey, 'trainer', e.target.value)}
-                          style={getAutoInputWidth(editablePdfRow.trainer, 14)}
-                          className="bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-[#0353A4] px-1 rounded"
-                        />
-                      ) : '—'}
-                    </td>
                   </tr>
-                );
-              });
-            })}
+                )}
+                {(collapsedGroups.has(section.key) && section.label ? [] : section.rows).map((row, idx) => {
+                  const statusInfo = getStatusInfo(row);
+                  const isMatch = row.matchStatus === 'match';
+                  const isPdfOnly = row.matchStatus === 'pdf-only';
+                  const isCsvOnly = row.matchStatus === 'csv-only';
+                  const mismatchIndex = mismatchIndexByRow.get(row);
+                  const isActiveMismatch = mismatchIndex !== undefined && mismatchIndex === activeMismatchIndex;
+                  const editablePdfRow = getEditablePdfRow(row.pdfClass);
+
+                  const rowBg = isActiveMismatch
+                    ? 'bg-slate-100 hover:bg-slate-100'
+                    : isMatch
+                      ? 'bg-white hover:bg-slate-50/60'
+                      : isPdfOnly || isCsvOnly
+                        ? 'bg-slate-50 hover:bg-slate-100/80'
+                        : 'bg-slate-50/70 hover:bg-slate-100/80';
+
+                  return (
+                    <tr
+                      key={`${section.key}-${idx}`}
+                      data-mismatch-index={mismatchIndex !== undefined ? mismatchIndex : undefined}
+                      className={`border-b border-slate-200 transition-colors ${rowBg}`}
+                    >
+                      <td className="border-r border-slate-200/70 px-3 py-2.5 text-xs font-semibold text-slate-400 whitespace-nowrap align-middle">{idx + 1}</td>
+                      {(groupBy === 'none' || groupBy === 'location') && (
+                        <td className="border-r border-slate-200/70 px-3 py-2.5 text-xs font-medium text-slate-600 whitespace-nowrap align-middle">{row.day}</td>
+                      )}
+                      {(groupBy === 'none' || groupBy === 'day') && (
+                        <td className="min-w-[220px] border-r border-slate-200/70 px-3 py-2.5 text-xs text-slate-600 align-middle whitespace-normal break-words">
+                          {getCombinedLocationLabel(row)}
+                        </td>
+                      )}
+                      <td className="border-r border-slate-200/70 px-3 py-2.5 font-mono text-xs text-slate-700 whitespace-nowrap align-middle">
+                        {row.csvClass?.time || <span className="text-slate-300">—</span>}
+                      </td>
+                      <td className="min-w-[260px] border-r border-slate-200/70 px-3 py-2.5 text-xs text-slate-800 font-medium align-middle whitespace-normal break-words">
+                        {row.csvClass?.className || <span className="text-slate-300">—</span>}
+                      </td>
+                      <td className="min-w-[240px] border-r border-slate-200/70 px-3 py-2.5 text-xs text-slate-700 align-middle whitespace-normal break-words">
+                        {row.csvClass?.trainer || <span className="text-slate-300">—</span>}
+                      </td>
+                      <td className="border-x border-slate-200 px-3 py-2.5 text-center align-middle">
+                        <div className={`inline-flex h-8 w-[110px] items-center justify-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-1 shadow-sm ${statusInfo.badgeClass}`}>
+                          {statusInfo.icon}
+                          <span className="text-[10px] font-medium text-slate-500">{statusInfo.label}</span>
+                        </div>
+                      </td>
+                      <td className="border-r border-slate-200/70 px-3 py-2.5 font-mono text-xs text-slate-700 whitespace-nowrap align-middle">
+                        {editablePdfRow ? (
+                          <input
+                            type="text"
+                            value={editablePdfRow.time}
+                            onChange={e => handleCellEdit(editablePdfRow.uniqueKey, 'time', e.target.value)}
+                            className="min-w-[96px] border border-transparent bg-transparent px-1 py-0.5 text-xs font-mono text-slate-700 focus:outline-none focus:ring-0 focus:border-slate-200 rounded-md"
+                          />
+                        ) : <span className="text-slate-300">—</span>}
+                      </td>
+                      <td className="min-w-[260px] border-r border-slate-200/70 px-3 py-2.5 text-xs text-slate-800 font-medium align-middle">
+                        {editablePdfRow ? (
+                          <input
+                            type="text"
+                            value={editablePdfRow.className}
+                            onChange={e => handleCellEdit(editablePdfRow.uniqueKey, 'className', e.target.value)}
+                            className="min-w-[240px] border border-transparent bg-transparent px-1 py-0.5 text-xs text-slate-800 focus:outline-none focus:ring-0 focus:border-slate-200 rounded-md"
+                          />
+                        ) : <span className="text-slate-300">—</span>}
+                      </td>
+                      <td className="min-w-[240px] border-r border-slate-200/70 px-3 py-2.5 text-xs text-slate-700 align-middle">
+                        {editablePdfRow ? (
+                          <input
+                            type="text"
+                            value={editablePdfRow.trainer}
+                            onChange={e => handleCellEdit(editablePdfRow.uniqueKey, 'trainer', e.target.value)}
+                            className="min-w-[220px] border border-transparent bg-transparent px-1 py-0.5 text-xs text-slate-700 focus:outline-none focus:ring-0 focus:border-slate-200 rounded-md"
+                          />
+                        ) : <span className="text-slate-300">—</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </React.Fragment>
+            ))}
           </tbody>
         </table>
       </div>

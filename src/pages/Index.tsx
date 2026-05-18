@@ -273,6 +273,13 @@ const Index = () => {
 
         try {
           const pageImages = await renderPdfPagesForThemeVision(file);
+          console.info('[PDF Theme Vision] prepared request', {
+            fileName: file.name,
+            parsedRows: pdfData.length,
+            renderedPages: pageImages.length,
+            csvThemeCandidates: collectThemeCandidates(csvClassDataRef.current).length,
+          });
+
           if (pageImages.length > 0) {
             const themeCandidates = collectThemeCandidates(csvClassDataRef.current);
             const themeMatches = await invokePdfThemeVision(
@@ -284,11 +291,29 @@ const Index = () => {
               themeCandidates,
               csvData: csvClassDataRef.current,
             });
+            const appliedThemes = enrichedPdfData.filter((row, index) => row.theme !== pdfData[index]?.theme).length;
+
+            console.info('[PDF Theme Vision] response applied', {
+              fileName: file.name,
+              matchesReturned: themeMatches.length,
+              themesApplied: appliedThemes,
+            });
+
+            if (themeMatches.length > 0 && appliedThemes === 0) {
+              console.warn('[PDF Theme Vision] matches were returned but rejected by row/theme matching safeguards.', {
+                fileName: file.name,
+                matches: themeMatches,
+              });
+            }
 
             if (enrichedPdfData.some((row, index) => row.theme !== pdfData[index]?.theme)) {
               pdfData = enrichedPdfData;
               schedule = applyPdfDataThemesToSchedule(schedule, pdfData);
             }
+          } else {
+            console.warn('[PDF Theme Vision] no page images were rendered for visual enrichment.', {
+              fileName: file.name,
+            });
           }
         } catch (themeError) {
           console.warn('Visual PDF theme enrichment skipped.', themeError);

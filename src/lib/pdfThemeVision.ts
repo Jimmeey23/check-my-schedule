@@ -22,6 +22,10 @@ export interface PdfThemeVisionMatch {
 
 const MIN_THEME_CONFIDENCE = 0.75;
 const DAY_NAME_PATTERN = /\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i;
+type NormalizedThemeCandidate = {
+  normalized: string;
+  label: string;
+};
 
 function createCanvas(width: number, height: number): HTMLCanvasElement | null {
   if (typeof document === 'undefined') return null;
@@ -52,29 +56,47 @@ export function collectThemeCandidates(csvData: { [day: string]: ClassData[] } |
   ));
 }
 
+function canonicalizeThemeWithCandidates(
+  theme: string | undefined,
+  candidates: NormalizedThemeCandidate[]
+): string | null {
+  const rawTheme = theme?.trim() || '';
+  if (!rawTheme) return null;
+  if (DAY_NAME_PATTERN.test(rawTheme)) return null;
+
+  const normalizedTheme = normalizeThemeName(rawTheme);
+  if (!normalizedTheme) return null;
+
+  if (candidates.length === 0) return rawTheme;
+
+  const exactCandidate = candidates.find(candidate => candidate.normalized === normalizedTheme);
+  if (exactCandidate) return exactCandidate.label;
+
+  const containedCandidates = candidates
+    .filter(candidate => candidate.normalized && normalizedTheme.includes(candidate.normalized))
+    .sort((a, b) => b.normalized.length - a.normalized.length);
+
+  return containedCandidates[0]?.label ?? null;
+}
+
 export function mergeVisionThemesIntoPdfData(
   pdfData: PdfClassData[],
   matches: PdfThemeVisionMatch[],
   options: { minConfidence?: number; themeCandidates?: string[] } = {}
 ): PdfClassData[] {
   const minConfidence = options.minConfidence ?? MIN_THEME_CONFIDENCE;
-  const candidateByNormalizedTheme = new Map(
-    (options.themeCandidates ?? [])
+  const normalizedCandidates = (options.themeCandidates ?? [])
       .map(candidate => candidate.trim())
       .filter(Boolean)
-      .map(candidate => [normalizeThemeName(candidate), candidate] as const)
-  );
+      .map(candidate => ({ normalized: normalizeThemeName(candidate), label: candidate }))
+      .filter(candidate => candidate.normalized);
   const exactMatches = new Map<string, PdfThemeVisionMatch>();
 
   for (const match of matches) {
     if (!match.theme?.trim() || match.confidence < minConfidence) continue;
 
-    const normalizedTheme = normalizeThemeName(match.theme);
-    if (!normalizedTheme) continue;
-    if (DAY_NAME_PATTERN.test(match.theme)) continue;
-
-    const candidateTheme = candidateByNormalizedTheme.get(normalizedTheme);
-    if (candidateByNormalizedTheme.size > 0 && !candidateTheme) continue;
+    const candidateTheme = canonicalizeThemeWithCandidates(match.theme, normalizedCandidates);
+    if (!candidateTheme) continue;
 
     const asRow: PdfClassData = {
       day: match.day,
@@ -82,19 +104,21 @@ export function mergeVisionThemesIntoPdfData(
       className: match.className,
       trainer: match.trainer,
       location: '',
-      theme: candidateTheme || match.theme,
+      theme: candidateTheme,
       uniqueKey: '',
     };
     const exactKey = rowKey(asRow);
     const currentExact = exactMatches.get(exactKey);
 
     if (!currentExact || match.confidence > currentExact.confidence) {
-      exactMatches.set(exactKey, { ...match, theme: candidateTheme || match.theme });
+      exactMatches.set(exactKey, { ...match, theme: candidateTheme });
     }
   }
 
   return pdfData.map(row => {
-    if (row.theme?.trim()) return row;
+    const existingTheme = canonicalizeThemeWithCandidates(row.theme, normalizedCandidates);
+    if (existingTheme) return { ...row, theme: existingTheme };
+    if (row.theme?.trim()) return { ...row, theme: undefined };
 
     const exactMatch = exactMatches.get(rowKey(row));
     if (exactMatch) {

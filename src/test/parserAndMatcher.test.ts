@@ -595,6 +595,38 @@ describe('PDF visual theme enrichment', () => {
     expect(enriched[1]?.theme).toBe('Circle Circus');
   });
 
+  it('canonicalizes already parsed PDF themes against known CSV candidates', () => {
+    const pdfData: PdfClassData[] = [
+      {
+        day: 'Monday',
+        time: '19:30',
+        className: 'Studio PowerCycle',
+        trainer: 'Vivaran Dhasmana',
+        location: 'Supreme HQ, Bandra',
+        theme: 'Decade Hits Kendrick Vs The',
+        uniqueKey: 'pdf-bandra-monday',
+      },
+      {
+        day: 'Wednesday',
+        time: '10:30',
+        className: 'Studio PowerCycle',
+        trainer: 'Cauveri Vikrant',
+        location: 'Supreme HQ, Bandra',
+        theme: 'Kendrick Vs Theweeknd Kendrick Vs The',
+        uniqueKey: 'pdf-bandra-wednesday',
+      },
+    ];
+
+    const enriched = mergeVisionThemesIntoPdfData(
+      pdfData,
+      [],
+      { themeCandidates: ['Decade Hits', 'Kendrick Vs the Weekend'] }
+    );
+
+    expect(enriched[0]?.theme).toBe('Decade Hits');
+    expect(enriched[1]?.theme).toBe('Kendrick Vs the Weekend');
+  });
+
   it('copies enriched PDF themes back into the parsed schedule', () => {
     const schedule = {
       id: 'week-1',

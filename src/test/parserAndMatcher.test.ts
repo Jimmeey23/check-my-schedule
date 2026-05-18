@@ -595,7 +595,39 @@ describe('PDF visual theme enrichment', () => {
     expect(enriched[1]?.theme).toBe('Circle Circus');
   });
 
-  it('canonicalizes already parsed PDF themes against known CSV candidates', () => {
+  it('canonicalizes exact already parsed PDF themes against known CSV candidates', () => {
+    const pdfData: PdfClassData[] = [
+      {
+        day: 'Monday',
+        time: '19:30',
+        className: 'Studio PowerCycle',
+        trainer: 'Vivaran Dhasmana',
+        location: 'Supreme HQ, Bandra',
+        theme: '( DECADE HITS )',
+        uniqueKey: 'pdf-bandra-monday',
+      },
+      {
+        day: 'Wednesday',
+        time: '10:30',
+        className: 'Studio PowerCycle',
+        trainer: 'Cauveri Vikrant',
+        location: 'Supreme HQ, Bandra',
+        theme: 'Kendrick Vs Theweeknd',
+        uniqueKey: 'pdf-bandra-wednesday',
+      },
+    ];
+
+    const enriched = mergeVisionThemesIntoPdfData(
+      pdfData,
+      [],
+      { themeCandidates: ['Decade Hits', 'Kendrick Vs the Weekend'] }
+    );
+
+    expect(enriched[0]?.theme).toBe('Decade Hits');
+    expect(enriched[1]?.theme).toBe('Kendrick Vs the Weekend');
+  });
+
+  it('clears polluted parsed PDF theme strings instead of canonicalizing by substring', () => {
     const pdfData: PdfClassData[] = [
       {
         day: 'Monday',
@@ -623,8 +655,8 @@ describe('PDF visual theme enrichment', () => {
       { themeCandidates: ['Decade Hits', 'Kendrick Vs the Weekend'] }
     );
 
-    expect(enriched[0]?.theme).toBe('Decade Hits');
-    expect(enriched[1]?.theme).toBe('Kendrick Vs the Weekend');
+    expect(enriched[0]?.theme).toBeUndefined();
+    expect(enriched[1]?.theme).toBeUndefined();
   });
 
   it('does not add visual-only themes to PDF-only rows', () => {

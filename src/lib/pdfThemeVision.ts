@@ -82,11 +82,7 @@ function canonicalizeThemeWithCandidates(
   const exactCandidate = candidates.find(candidate => candidate.normalized === normalizedTheme);
   if (exactCandidate) return exactCandidate.label;
 
-  const containedCandidates = candidates
-    .filter(candidate => candidate.normalized && normalizedTheme.includes(candidate.normalized))
-    .sort((a, b) => b.normalized.length - a.normalized.length);
-
-  return containedCandidates[0]?.label ?? null;
+  return null;
 }
 
 export function mergeVisionThemesIntoPdfData(

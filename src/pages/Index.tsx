@@ -291,12 +291,16 @@ const Index = () => {
               themeCandidates,
               csvData: csvClassDataRef.current,
             });
-            const appliedThemes = enrichedPdfData.filter((row, index) => row.theme !== pdfData[index]?.theme).length;
+            const changedThemeRows = enrichedPdfData.filter((row, index) => row.theme !== pdfData[index]?.theme);
+            const appliedThemes = changedThemeRows.filter(row => row.theme?.trim()).length;
+            const clearedParserThemes = changedThemeRows.filter(row => !row.theme?.trim()).length;
 
             console.info('[PDF Theme Vision] response applied', {
               fileName: file.name,
               matchesReturned: themeMatches.length,
               themesApplied: appliedThemes,
+              parserThemesCleared: clearedParserThemes,
+              rowsChanged: changedThemeRows.length,
             });
 
             if (themeMatches.length > 0 && appliedThemes === 0) {

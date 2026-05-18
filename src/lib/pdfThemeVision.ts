@@ -40,14 +40,6 @@ function rowKey(row: Pick<PdfClassData, 'day' | 'time' | 'className' | 'trainer'
   ].join('|');
 }
 
-function partialRowKey(row: Pick<PdfClassData, 'day' | 'time' | 'className'>): string {
-  return [
-    row.day.trim().toLowerCase(),
-    normalizeTime(row.time),
-    normalizeClassName(row.className),
-  ].join('|');
-}
-
 export function collectThemeCandidates(csvData: { [day: string]: ClassData[] } | null | undefined): string[] {
   if (!csvData) return [];
 
@@ -66,7 +58,6 @@ export function mergeVisionThemesIntoPdfData(
 ): PdfClassData[] {
   const minConfidence = options.minConfidence ?? MIN_THEME_CONFIDENCE;
   const exactMatches = new Map<string, PdfThemeVisionMatch>();
-  const partialMatches = new Map<string, PdfThemeVisionMatch[]>();
 
   for (const match of matches) {
     if (!match.theme?.trim() || match.confidence < minConfidence) continue;
@@ -84,16 +75,11 @@ export function mergeVisionThemesIntoPdfData(
       uniqueKey: '',
     };
     const exactKey = rowKey(asRow);
-    const partialKey = partialRowKey(asRow);
     const currentExact = exactMatches.get(exactKey);
 
     if (!currentExact || match.confidence > currentExact.confidence) {
       exactMatches.set(exactKey, match);
     }
-
-    const partialList = partialMatches.get(partialKey) || [];
-    partialList.push(match);
-    partialMatches.set(partialKey, partialList);
   }
 
   return pdfData.map(row => {
@@ -104,11 +90,7 @@ export function mergeVisionThemesIntoPdfData(
       return { ...row, theme: exactMatch.theme.trim() };
     }
 
-    const partialList = partialMatches.get(partialRowKey(row)) || [];
-    const confidentPartialMatches = partialList.filter(match => match.confidence >= minConfidence);
-    if (confidentPartialMatches.length !== 1) return row;
-
-    return { ...row, theme: confidentPartialMatches[0].theme.trim() };
+    return row;
   });
 }
 

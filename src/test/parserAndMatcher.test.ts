@@ -496,6 +496,32 @@ describe('PDF visual theme enrichment', () => {
     expect(enriched[0]?.theme).toBeUndefined();
   });
 
+  it('does not apply visual matches to the wrong day even when time and class match', () => {
+    const pdfData: PdfClassData[] = [
+      {
+        day: 'Monday',
+        time: '19:30',
+        className: 'Studio PowerCycle',
+        trainer: 'Raunak Khemuka',
+        location: 'Kwality House, Kemps Corner',
+        uniqueKey: 'pdf-monday',
+      },
+    ];
+
+    const enriched = mergeVisionThemesIntoPdfData(pdfData, [
+      {
+        day: 'Tuesday',
+        time: '19:30',
+        className: 'Studio PowerCycle',
+        trainer: 'Raunak Khemuka',
+        theme: 'Kendrick Vs the Weeknd',
+        confidence: 1,
+      },
+    ]);
+
+    expect(enriched[0]?.theme).toBeUndefined();
+  });
+
   it('copies enriched PDF themes back into the parsed schedule', () => {
     const schedule = {
       id: 'week-1',

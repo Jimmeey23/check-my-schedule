@@ -5,10 +5,35 @@ import { cn } from '@/lib/utils';
 import type { UploadedFile } from '@/types/schedule';
 
 interface FileUploadZoneProps {
-  onUpload: (file: File, type: 'pdf' | 'csv') => void;
+  onUpload: (file: File, type: 'pdf' | 'csv') => void | Promise<void>;
   uploadedFiles: UploadedFile[];
   onRemoveFile: (id: string) => void;
   acceptedTypes?: ('pdf' | 'csv')[];
+}
+
+type UploadType = 'pdf' | 'csv';
+type UploadItem = {
+  file: File;
+  type: UploadType;
+};
+
+function getFileType(file: File): UploadType | null {
+  if (file.type === 'application/pdf') return 'pdf';
+  if (file.type === 'text/csv' || file.name.endsWith('.csv')) return 'csv';
+  return null;
+}
+
+export function getOrderedUploadItems(files: File[], acceptedTypes: UploadType[] = ['pdf', 'csv']): UploadItem[] {
+  return files
+    .map(file => {
+      const type = getFileType(file);
+      return type && acceptedTypes.includes(type) ? { file, type } : null;
+    })
+    .filter((item): item is UploadItem => Boolean(item))
+    .sort((a, b) => {
+      if (a.type === b.type) return 0;
+      return a.type === 'csv' ? -1 : 1;
+    });
 }
 
 export function FileUploadZone({ 
@@ -32,35 +57,25 @@ export function FileUploadZone({
     setIsDragging(false);
   }, []);
 
-  const getFileType = (file: File): 'pdf' | 'csv' | null => {
-    if (file.type === 'application/pdf') return 'pdf';
-    if (file.type === 'text/csv' || file.name.endsWith('.csv')) return 'csv';
-    return null;
-  };
+  const processFiles = useCallback(async (files: File[]) => {
+    for (const { file, type } of getOrderedUploadItems(files, acceptedTypes)) {
+      await onUpload(file, type);
+    }
+  }, [acceptedTypes, onUpload]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
     
     const files = Array.from(e.dataTransfer.files);
-    for (const file of files) {
-      const type = getFileType(file);
-      if (type && acceptedTypes.includes(type)) {
-        onUpload(file, type);
-      }
-    }
-  }, [onUpload, acceptedTypes]);
+    void processFiles(files);
+  }, [processFiles]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    for (const file of files) {
-      const type = getFileType(file);
-      if (type && acceptedTypes.includes(type)) {
-        onUpload(file, type);
-      }
-    }
+    void processFiles(files);
     e.target.value = '';
-  }, [onUpload, acceptedTypes]);
+  }, [processFiles]);
 
   const getStatusIcon = (file: UploadedFile) => {
     switch (file.status) {

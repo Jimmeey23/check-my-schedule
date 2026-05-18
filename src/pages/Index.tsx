@@ -336,6 +336,7 @@ const Index = () => {
               if (!classDataByDay[row.day]) classDataByDay[row.day] = [];
               classDataByDay[row.day].push(row);
             });
+            csvClassDataRef.current = classDataByDay;
             setCsvClassData(classDataByDay);
           }
           

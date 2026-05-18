@@ -354,12 +354,13 @@ const Index = () => {
         try {
           const pageImages = await renderPdfPagesForThemeVision(file);
           if (pageImages.length > 0) {
+            const themeCandidates = collectThemeCandidates(csvClassDataRef.current);
             const themeMatches = await invokePdfThemeVision(
               pdfData,
               pageImages,
-              collectThemeCandidates(csvClassDataRef.current)
+              themeCandidates
             );
-            const enrichedPdfData = mergeVisionThemesIntoPdfData(pdfData, themeMatches);
+            const enrichedPdfData = mergeVisionThemesIntoPdfData(pdfData, themeMatches, { themeCandidates });
 
             if (enrichedPdfData.some((row, index) => row.theme !== pdfData[index]?.theme)) {
               pdfData = enrichedPdfData;

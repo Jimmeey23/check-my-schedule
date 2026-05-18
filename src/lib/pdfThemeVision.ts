@@ -21,6 +21,7 @@ export interface PdfThemeVisionMatch {
 }
 
 const MIN_THEME_CONFIDENCE = 0.75;
+const DAY_NAME_PATTERN = /\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i;
 
 function createCanvas(width: number, height: number): HTMLCanvasElement | null {
   if (typeof document === 'undefined') return null;
@@ -54,9 +55,15 @@ export function collectThemeCandidates(csvData: { [day: string]: ClassData[] } |
 export function mergeVisionThemesIntoPdfData(
   pdfData: PdfClassData[],
   matches: PdfThemeVisionMatch[],
-  options: { minConfidence?: number } = {}
+  options: { minConfidence?: number; themeCandidates?: string[] } = {}
 ): PdfClassData[] {
   const minConfidence = options.minConfidence ?? MIN_THEME_CONFIDENCE;
+  const candidateByNormalizedTheme = new Map(
+    (options.themeCandidates ?? [])
+      .map(candidate => candidate.trim())
+      .filter(Boolean)
+      .map(candidate => [normalizeThemeName(candidate), candidate] as const)
+  );
   const exactMatches = new Map<string, PdfThemeVisionMatch>();
 
   for (const match of matches) {
@@ -64,6 +71,10 @@ export function mergeVisionThemesIntoPdfData(
 
     const normalizedTheme = normalizeThemeName(match.theme);
     if (!normalizedTheme) continue;
+    if (DAY_NAME_PATTERN.test(match.theme)) continue;
+
+    const candidateTheme = candidateByNormalizedTheme.get(normalizedTheme);
+    if (candidateByNormalizedTheme.size > 0 && !candidateTheme) continue;
 
     const asRow: PdfClassData = {
       day: match.day,
@@ -71,14 +82,14 @@ export function mergeVisionThemesIntoPdfData(
       className: match.className,
       trainer: match.trainer,
       location: '',
-      theme: match.theme,
+      theme: candidateTheme || match.theme,
       uniqueKey: '',
     };
     const exactKey = rowKey(asRow);
     const currentExact = exactMatches.get(exactKey);
 
     if (!currentExact || match.confidence > currentExact.confidence) {
-      exactMatches.set(exactKey, match);
+      exactMatches.set(exactKey, { ...match, theme: candidateTheme || match.theme });
     }
   }
 

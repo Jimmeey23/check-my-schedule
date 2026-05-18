@@ -522,6 +522,79 @@ describe('PDF visual theme enrichment', () => {
     expect(enriched[0]?.theme).toBeUndefined();
   });
 
+  it('does not apply visual OCR day headers as themes', () => {
+    const pdfData: PdfClassData[] = [
+      {
+        day: 'Monday',
+        time: '19:30',
+        className: 'Studio PowerCycle',
+        trainer: 'Raunak Khemuka',
+        location: 'Kwality House, Kemps Corner',
+        uniqueKey: 'pdf-monday',
+      },
+    ];
+
+    const enriched = mergeVisionThemesIntoPdfData(pdfData, [
+      {
+        day: 'Monday',
+        time: '19:30',
+        className: 'Studio PowerCycle',
+        trainer: 'Raunak Khemuka',
+        theme: 'Wednesday Thursday',
+        confidence: 0.98,
+      },
+    ]);
+
+    expect(enriched[0]?.theme).toBeUndefined();
+  });
+
+  it('requires visual themes to match known CSV candidates when candidates are provided', () => {
+    const pdfData: PdfClassData[] = [
+      {
+        day: 'Tuesday',
+        time: '07:30',
+        className: 'Studio PowerCycle',
+        trainer: 'Bret Saldanha',
+        location: 'Kwality House, Kemps Corner',
+        uniqueKey: 'pdf-tuesday',
+      },
+      {
+        day: 'Tuesday',
+        time: '08:30',
+        className: 'Studio Amped Up!',
+        trainer: 'Reshma Sharma',
+        location: 'Kwality House, Kemps Corner',
+        uniqueKey: 'pdf-tuesday-amped',
+      },
+    ];
+
+    const enriched = mergeVisionThemesIntoPdfData(
+      pdfData,
+      [
+        {
+          day: 'Tuesday',
+          time: '07:30',
+          className: 'Studio PowerCycle',
+          trainer: 'Bret Saldanha',
+          theme: 'Hosted',
+          confidence: 0.99,
+        },
+        {
+          day: 'Tuesday',
+          time: '08:30',
+          className: 'Studio Amped Up!',
+          trainer: 'Reshma Sharma',
+          theme: 'CIRCLE CIRCUS',
+          confidence: 0.99,
+        },
+      ],
+      { themeCandidates: ['Circle Circus', 'Decade Hits'] }
+    );
+
+    expect(enriched[0]?.theme).toBeUndefined();
+    expect(enriched[1]?.theme).toBe('Circle Circus');
+  });
+
   it('copies enriched PDF themes back into the parsed schedule', () => {
     const schedule = {
       id: 'week-1',

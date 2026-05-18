@@ -816,6 +816,50 @@ describe('PDF parser regressions', () => {
     expect(classes[1]?.theme).toBeUndefined();
   });
 
+  it('does not treat schedule day headers as theme legend labels', () => {
+    const width = 240;
+    const height = 240;
+    const data = new Uint8ClampedArray(width * height * 4).fill(255);
+    const paintPdfRect = (rect: { x: number; y: number; width: number; height: number }, color: [number, number, number]) => {
+      for (let pdfY = rect.y; pdfY < rect.y + rect.height; pdfY += 1) {
+        for (let pdfX = rect.x; pdfX < rect.x + rect.width; pdfX += 1) {
+          const imageY = height - pdfY - 1;
+          const index = (imageY * width + pdfX) * 4;
+          data[index] = color[0];
+          data[index + 1] = color[1];
+          data[index + 2] = color[2];
+          data[index + 3] = 255;
+        }
+      }
+    };
+
+    paintPdfRect({ x: 8, y: 93, width: 35, height: 14 }, [112, 186, 149]);
+    paintPdfRect({ x: 45, y: 28, width: 55, height: 14 }, [242, 201, 156]);
+
+    const detectThemeLegendEntries = (__pdfParserTestUtils as unknown as {
+      detectThemeLegendEntries: (
+        lines: Array<{ text: string; items: unknown[]; x: number; y: number; width: number; height: number; pageIndex: number }>,
+        pageIndex: number,
+        sample: { width: number; height: number; imageData: { width: number; height: number; data: Uint8ClampedArray } }
+      ) => Array<{ theme: string }>;
+    }).detectThemeLegendEntries;
+
+    const entries = detectThemeLegendEntries(
+      [
+        { text: 'Wednesday Thursday', items: [], x: 48, y: 95, width: 160, height: 14, pageIndex: 0 },
+        { text: 'DECADE HITS', items: [], x: 112, y: 30, width: 90, height: 14, pageIndex: 0 },
+      ],
+      0,
+      {
+        width,
+        height,
+        imageData: { width, height, data },
+      }
+    );
+
+    expect(entries.map(entry => entry.theme)).toEqual(['Decade Hits']);
+  });
+
   it('keeps parsed PDF themes when converting schedule rows for comparison', () => {
     const rows = scheduleToPdfClassData({
       id: 'week-1',

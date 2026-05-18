@@ -997,6 +997,12 @@ function isDayHeaderText(text: string): boolean {
   return DAY_PATTERNS.some(pattern => pattern.regex.test(trimmed) && trimmed.length < 30);
 }
 
+function containsDayHeaderText(text: string): boolean {
+  const trimmed = normalizeExtractedText(text);
+  if (!trimmed) return false;
+  return DAY_PATTERNS.some(pattern => pattern.regex.test(trimmed));
+}
+
 function parseDayClassesFromPositionedItems(items: TextItem[], dayIndex: number): ScheduleClass[] {
   const scheduleItems = items.filter(item => {
     const text = item.str.trim();
@@ -1471,13 +1477,26 @@ function countMatchingPixels(sample: RenderedPageSample, rect: PdfTemplateRect, 
   return matches;
 }
 
+function looksLikeLegendThemeText(text: string): boolean {
+  const cleaned = formatThemeText(text);
+  if (!cleaned) return false;
+  if (containsDayHeaderText(cleaned)) return false;
+  if (TIME_PATTERN.test(cleaned) || INLINE_TIME_PATTERN.test(cleaned)) return false;
+  if (matchClassName(cleaned) || matchTrainer(cleaned)) return false;
+  if (THEME_MARKER_REGEX.test(cleaned)) return true;
+  if (findKnownTheme(cleaned)) return true;
+
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  return words.length >= 2 && words.length <= 8 && /^[A-Za-z&'\s]+$/.test(cleaned);
+}
+
 function detectThemeLegendEntries(lines: PositionedLine[], pageIndex: number, sample: RenderedPageSample): ThemeLegendEntry[] {
   return lines
     .filter(line => line.pageIndex === pageIndex)
     .filter(line => line.y < sample.height * 0.45)
     .map(line => {
       const theme = formatThemeText(line.text);
-      if (!looksLikeTheme(theme)) return null;
+      if (!looksLikeLegendThemeText(theme)) return null;
 
       const legendRect: PdfTemplateRect = {
         pageIndex,
@@ -1780,6 +1799,7 @@ export const __pdfParserTestUtils = {
   matchTrainer,
   extractTheme,
   mergeThemeParts,
+  detectThemeLegendEntries,
   countMatchingPixels,
   applyRecoveredThemesToDayClasses,
 };

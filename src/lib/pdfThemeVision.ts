@@ -45,6 +45,16 @@ function rowKey(row: Pick<PdfClassData, 'day' | 'time' | 'className' | 'trainer'
   ].join('|');
 }
 
+function csvRowKey(row: ClassData): string {
+  const effectiveTrainer = row.cover?.trim() || row.trainer1 || '';
+  return rowKey({
+    day: row.day,
+    time: row.time || row.timeRaw,
+    className: row.className,
+    trainer: effectiveTrainer,
+  });
+}
+
 export function collectThemeCandidates(csvData: { [day: string]: ClassData[] } | null | undefined): string[] {
   if (!csvData) return [];
 
@@ -82,7 +92,7 @@ function canonicalizeThemeWithCandidates(
 export function mergeVisionThemesIntoPdfData(
   pdfData: PdfClassData[],
   matches: PdfThemeVisionMatch[],
-  options: { minConfidence?: number; themeCandidates?: string[] } = {}
+  options: { minConfidence?: number; themeCandidates?: string[]; csvData?: { [day: string]: ClassData[] } | null } = {}
 ): PdfClassData[] {
   const minConfidence = options.minConfidence ?? MIN_THEME_CONFIDENCE;
   const normalizedCandidates = (options.themeCandidates ?? [])
@@ -90,6 +100,12 @@ export function mergeVisionThemesIntoPdfData(
       .filter(Boolean)
       .map(candidate => ({ normalized: normalizeThemeName(candidate), label: candidate }))
       .filter(candidate => candidate.normalized);
+  const csvRowKeys = new Set(
+    Object.values(options.csvData ?? {})
+      .flat()
+      .map(csvRowKey)
+      .filter(Boolean)
+  );
   const exactMatches = new Map<string, PdfThemeVisionMatch>();
 
   for (const match of matches) {
@@ -121,6 +137,10 @@ export function mergeVisionThemesIntoPdfData(
     if (row.theme?.trim()) return { ...row, theme: undefined };
 
     const exactMatch = exactMatches.get(rowKey(row));
+    if (exactMatch && csvRowKeys.size > 0 && !csvRowKeys.has(rowKey(row))) {
+      return row;
+    }
+
     if (exactMatch) {
       return { ...row, theme: exactMatch.theme.trim() };
     }

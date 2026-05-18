@@ -627,6 +627,54 @@ describe('PDF visual theme enrichment', () => {
     expect(enriched[1]?.theme).toBe('Kendrick Vs the Weekend');
   });
 
+  it('does not add visual-only themes to PDF-only rows', () => {
+    const pdfData: PdfClassData[] = [
+      {
+        day: 'Sunday',
+        time: '11:30',
+        className: 'Studio PowerCycle',
+        trainer: 'Raunak Khemuka',
+        location: 'Kwality House, Kemps Corner',
+        uniqueKey: 'pdf-only-sunday',
+      },
+    ];
+
+    const csvData: Record<string, ClassData[]> = {
+      Sunday: [
+        {
+          day: 'Sunday',
+          timeRaw: '17:00',
+          timeDate: null,
+          time: '17:00',
+          location: 'Kwality House, Kemps Corner',
+          className: 'Studio PowerCycle',
+          trainer1: 'Anmol Sharma',
+          cover: '',
+          notes: '',
+          theme: '',
+          uniqueKey: 'csv-sunday',
+        },
+      ],
+    };
+
+    const enriched = mergeVisionThemesIntoPdfData(
+      pdfData,
+      [
+        {
+          day: 'Sunday',
+          time: '11:30',
+          className: 'Studio PowerCycle',
+          trainer: 'Raunak Khemuka',
+          theme: 'Length & Strength',
+          confidence: 0.98,
+        },
+      ],
+      { themeCandidates: ['Length & Strength'], csvData }
+    );
+
+    expect(enriched[0]?.theme).toBeUndefined();
+  });
+
   it('copies enriched PDF themes back into the parsed schedule', () => {
     const schedule = {
       id: 'week-1',

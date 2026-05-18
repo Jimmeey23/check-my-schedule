@@ -360,7 +360,10 @@ const Index = () => {
               pageImages,
               themeCandidates
             );
-            const enrichedPdfData = mergeVisionThemesIntoPdfData(pdfData, themeMatches, { themeCandidates });
+            const enrichedPdfData = mergeVisionThemesIntoPdfData(pdfData, themeMatches, {
+              themeCandidates,
+              csvData: csvClassDataRef.current,
+            });
 
             if (enrichedPdfData.some((row, index) => row.theme !== pdfData[index]?.theme)) {
               pdfData = enrichedPdfData;

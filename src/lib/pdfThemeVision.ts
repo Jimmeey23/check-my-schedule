@@ -121,7 +121,7 @@ export function applyPdfDataThemesToSchedule(schedule: WeekSchedule, pdfData: Pd
 
 export async function renderPdfPagesForThemeVision(file: File): Promise<PdfThemePageImage[]> {
   const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer.slice(0) }).promise;
+  const pdf = await pdfjsLib.getDocument({ data: Uint8Array.from(new Uint8Array(arrayBuffer)) }).promise;
   const images: PdfThemePageImage[] = [];
 
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {

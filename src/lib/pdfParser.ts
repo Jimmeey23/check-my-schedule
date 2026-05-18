@@ -440,7 +440,7 @@ const INLINE_TIME_PATTERN = /(\d{1,2}[:.]\d{2}\s*(AM|PM)|\d{1,2}\s*(AM|PM))/i;
 // =====================================================================
 
 async function extractTextItemsFromArrayBuffer(arrayBuffer: ArrayBuffer): Promise<TextItem[][]> {
-  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+  const pdf = await pdfjsLib.getDocument({ data: Uint8Array.from(new Uint8Array(arrayBuffer)) }).promise;
   const allPages: TextItem[][] = [];
 
   for (let i = 1; i <= pdf.numPages; i++) {
@@ -1336,7 +1336,7 @@ function createSamplingCanvas(width: number, height: number): HTMLCanvasElement 
 }
 
 async function renderPdfPages(arrayBuffer: ArrayBuffer): Promise<RenderedPageSample[]> {
-  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+  const pdf = await pdfjsLib.getDocument({ data: Uint8Array.from(new Uint8Array(arrayBuffer)) }).promise;
   const pages: RenderedPageSample[] = [];
 
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
@@ -1703,7 +1703,7 @@ export async function parsePDF(file: File): Promise<WeekSchedule> {
 
   try {
     const templateLayout = buildTemplateLayoutFromPages(pages);
-    const themesByDay = await buildColorThemeMap(arrayBuffer.slice(0), templateLayout, pages);
+    const themesByDay = await buildColorThemeMap(arrayBuffer, templateLayout, pages);
 
     for (const day of days) {
       applyRecoveredThemesToDayClasses(

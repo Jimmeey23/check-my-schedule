@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import type { PersistedScheduleSnapshot } from '@/lib/persistedScheduleState';
 import type { CleanedPdfSheetRow } from '@/lib/cleanedPdfSheet';
+import type { PdfClassData } from '@/types/schedule';
+import type { PdfThemePageImage, PdfThemeVisionMatch } from '@/lib/pdfThemeVision';
 
 export interface PersistedUploadStateResponse {
   snapshot: PersistedScheduleSnapshot | null;
@@ -76,6 +78,32 @@ export async function syncCleanedPdfSheet(
 
   if (statusCode === 401 || /401|non-2xx status code/i.test(error.message)) {
     return invokeEdgeFunctionWithAnonAuth('google-sheets-sync', requestBody);
+  }
+
+  throw new Error(error.message);
+}
+
+export async function invokePdfThemeVision(
+  rows: PdfClassData[],
+  pageImages: PdfThemePageImage[],
+  themeCandidates: string[] = []
+): Promise<PdfThemeVisionMatch[]> {
+  const requestBody = { rows, pageImages, themeCandidates };
+  const { data, error } = await supabase.functions.invoke('pdf-theme-vision', {
+    body: requestBody,
+  });
+
+  if (!error) {
+    return Array.isArray(data?.matches) ? data.matches : [];
+  }
+
+  const statusCode = typeof error.context === 'object' && error.context && 'status' in error.context
+    ? Number((error.context as { status?: number }).status)
+    : undefined;
+
+  if (statusCode === 401 || /401|non-2xx status code/i.test(error.message)) {
+    const fallback = await invokeEdgeFunctionWithAnonAuth<{ matches?: PdfThemeVisionMatch[] }>('pdf-theme-vision', requestBody);
+    return Array.isArray(fallback?.matches) ? fallback.matches : [];
   }
 
   throw new Error(error.message);

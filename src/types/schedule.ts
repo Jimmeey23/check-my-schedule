@@ -33,6 +33,7 @@ export interface PdfClassData {
   className: string;
   trainer: string;
   location: string;
+  theme?: string;
   uniqueKey: string;
 }
 
@@ -100,6 +101,7 @@ export interface ComparedClass extends NormalizedClass {
     className?: boolean;
     trainer?: boolean;
     location?: boolean;
+    theme?: boolean;
   };
 }
 
@@ -132,6 +134,7 @@ export interface ComparisonResult {
     classMismatch?: boolean;
     trainerMismatch?: boolean;
     timeMismatch?: boolean;
+    themeMismatch?: boolean;
     csvMissing?: boolean;
     pdfMissing?: boolean;
   };

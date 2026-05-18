@@ -332,6 +332,22 @@ export function normalizeLocation(location: string | undefined): string | undefi
   return cleaned;
 }
 
+export function normalizeThemeName(theme: string | undefined): string {
+  if (!theme) return '';
+
+  return theme
+    .replace(/[⚡✨⭐🔥💥🎵🎶]\uFE0F?/gu, ' ')
+    .replace(/[()[\]{}]/g, ' ')
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9\s]/gi, ' ')
+    .replace(/\bthe\s*week(?:e)?nd\b/gi, 'the weeknd')
+    .replace(/\bweekend\b/gi, 'weeknd')
+    .replace(/\bvs\b/gi, ' vs ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
 /**
  * Get class level from normalized name
  */
@@ -376,6 +392,7 @@ export function normalizeSchedule(days: DaySchedule[]): NormalizedClass[] {
         location: cls.location,
         normalizedLocation: normalizeLocation(cls.location),
         level: getClassLevel(normalizedName) || cls.level,
+        theme: cls.theme,
       });
     }
   }
@@ -446,6 +463,10 @@ export function compareSchedules(
           className: assessment.classMismatch || undefined,
           trainer: assessment.trainerMismatch || undefined,
           location: assessment.locationMismatch || undefined,
+          theme: (
+            Boolean(normalizeThemeName(csvClass.theme)) &&
+            normalizeThemeName(pdfClass.theme) !== normalizeThemeName(csvClass.theme)
+          ) || undefined,
         };
       }
     }

@@ -4,6 +4,7 @@ export interface CanonicalClassRecord {
   className: string;
   trainer: string;
   location?: string;
+  theme?: string;
 }
 
 export interface MatchAssessment {

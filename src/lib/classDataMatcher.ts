@@ -1,5 +1,5 @@
 import type { ClassData, PdfClassData } from "@/types/schedule";
-import { normalizeClassName, normalizeDay, normalizeLocation, normalizeTime, normalizeTrainer } from "./normalizers";
+import { normalizeClassName, normalizeDay, normalizeLocation, normalizeThemeName, normalizeTime, normalizeTrainer } from "./normalizers";
 import { assessMatch, matchSortKey, type CanonicalClassRecord, type MatchAssessment } from "./matchingUtils";
 
 export type CsvPdfMatchStatus =
@@ -7,6 +7,7 @@ export type CsvPdfMatchStatus =
   | "trainer-mismatch"
   | "class-mismatch"
   | "time-mismatch"
+  | "theme-mismatch"
   | "csv-only"
   | "pdf-only";
 
@@ -20,6 +21,7 @@ export interface CsvPdfAlignedRow {
     classMismatch?: boolean;
     trainerMismatch?: boolean;
     timeMismatch?: boolean;
+    themeMismatch?: boolean;
     csvMissing?: boolean;
     pdfMissing?: boolean;
   };
@@ -85,6 +87,7 @@ function canonicalizeCsv(row: ClassData): CanonicalRow<ClassData> {
       className: normalizeClassName(row.className || ""),
       trainer: normalizeTrainer(effectiveTrainer),
       location: normalizeLocation(row.location) || "",
+      theme: normalizeThemeName(row.theme),
     },
   };
 }
@@ -98,13 +101,21 @@ function canonicalizePdf(row: PdfClassData): CanonicalRow<PdfClassData> {
       className: normalizeClassName(row.className || ""),
       trainer: normalizeTrainer(row.trainer || ""),
       location: normalizeLocation(row.location) || "",
+      theme: normalizeThemeName(row.theme),
     },
   };
 }
 
-function chooseStatus(assessment: MatchAssessment): CsvPdfMatchStatus {
+function hasThemeMismatch(left: CanonicalClassRecord, right: CanonicalClassRecord): boolean {
+  const leftTheme = left.theme || "";
+  const rightTheme = right.theme || "";
+  if (!rightTheme) return false;
+  return leftTheme !== rightTheme;
+}
+
+function chooseStatus(assessment: MatchAssessment, themeMismatch: boolean): CsvPdfMatchStatus {
   if (!assessment.timeMismatch && !assessment.classMismatch && !assessment.trainerMismatch) {
-    return "match";
+    return themeMismatch ? "theme-mismatch" : "match";
   }
 
   if (assessment.timeMismatch) return "time-mismatch";
@@ -157,7 +168,8 @@ export function alignCsvPdfData(
 
     if (bestAssessment && bestCsvIndex >= 0 && bestAssessment.score >= 62) {
       usedCsv.add(bestCsvIndex);
-      const status = chooseStatus(bestAssessment);
+      const themeMismatch = hasThemeMismatch(pdfRow.canonical, csvRows[bestCsvIndex].canonical);
+      const status = chooseStatus(bestAssessment, themeMismatch);
 
       aligned.push({
         day: pdfRow.canonical.day,
@@ -169,6 +181,7 @@ export function alignCsvPdfData(
           timeMismatch: bestAssessment.timeMismatch || undefined,
           classMismatch: bestAssessment.classMismatch || undefined,
           trainerMismatch: bestAssessment.trainerMismatch || undefined,
+          themeMismatch: themeMismatch || undefined,
         },
       });
       continue;

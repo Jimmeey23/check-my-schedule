@@ -47,6 +47,7 @@ export function ComparisonViewer({ csvData, pdfData }: ComparisonViewerProps) {
           classMismatch: row.status === 'class-mismatch' || undefined,
           trainerMismatch: row.status === 'trainer-mismatch' || undefined,
           timeMismatch: row.status === 'time-mismatch' || undefined,
+          themeMismatch: row.discrepancies.themeMismatch || undefined,
           csvMissing: row.status === 'pdf-only' || undefined,
           pdfMissing: row.status === 'csv-only' || undefined,
         },
@@ -120,6 +121,10 @@ export function ComparisonViewer({ csvData, pdfData }: ComparisonViewerProps) {
       details.push(`Time: "${result.csv?.time}" (CSV) vs "${result.pdf?.time}" (PDF)`);
     }
 
+    if (result.discrepancies.themeMismatch) {
+      details.push(`Theme: "${result.csv?.theme || '—'}" (CSV) vs "${result.pdf?.theme || '—'}" (PDF)`);
+    }
+
     if (result.discrepancies.csvMissing) {
       details.push('This class is in the PDF but missing from the CSV');
     }
@@ -162,6 +167,7 @@ export function ComparisonViewer({ csvData, pdfData }: ComparisonViewerProps) {
       if (result.discrepancies.classMismatch) return 'Class Mismatch';
       if (result.discrepancies.trainerMismatch) return 'Trainer Mismatch';
       if (result.discrepancies.timeMismatch) return 'Time Mismatch';
+      if (result.discrepancies.themeMismatch) return 'Theme Mismatch';
       if (result.discrepancies.csvMissing) return 'Not in CSV';
       if (result.discrepancies.pdfMissing) return 'Not in PDF';
       return 'Mismatch';
@@ -176,11 +182,13 @@ export function ComparisonViewer({ csvData, pdfData }: ComparisonViewerProps) {
     htmlTable += `<td style="${headerStyles}">CSV Class</td>`;
     htmlTable += `<td style="${headerStyles}">CSV Trainer</td>`;
     htmlTable += `<td style="${headerStyles}">CSV Location</td>`;
+    htmlTable += `<td style="${headerStyles}">CSV Theme</td>`;
     htmlTable += `<td style="${headerStyles}">Status</td>`;
     htmlTable += `<td style="${headerStyles}">PDF Time</td>`;
     htmlTable += `<td style="${headerStyles}">PDF Class</td>`;
     htmlTable += `<td style="${headerStyles}">PDF Trainer</td>`;
     htmlTable += `<td style="${headerStyles}">PDF Location</td>`;
+    htmlTable += `<td style="${headerStyles}">PDF Theme</td>`;
     htmlTable += `</tr>\n`;
     
     // Add data rows
@@ -191,11 +199,13 @@ export function ComparisonViewer({ csvData, pdfData }: ComparisonViewerProps) {
       htmlTable += `<td style="${cellStyles}">${result.csv?.className || '—'}</td>`;
       htmlTable += `<td style="${cellStyles}">${result.csv?.trainer1 || '—'}</td>`;
       htmlTable += `<td style="${cellStyles}">${result.csv?.location || '—'}</td>`;
+      htmlTable += `<td style="${cellStyles}">${result.csv?.theme || '—'}</td>`;
       htmlTable += `<td style="${cellStyles}">${getStatusLabel(result)}</td>`;
       htmlTable += `<td style="${cellStyles}">${result.pdf?.time || '—'}</td>`;
       htmlTable += `<td style="${cellStyles}">${result.pdf?.className || '—'}</td>`;
       htmlTable += `<td style="${cellStyles}">${result.pdf?.trainer || '—'}</td>`;
       htmlTable += `<td style="${cellStyles}">${result.pdf?.location || '—'}</td>`;
+      htmlTable += `<td style="${cellStyles}">${result.pdf?.theme || '—'}</td>`;
       htmlTable += `</tr>\n`;
     });
     
@@ -310,6 +320,7 @@ export function ComparisonViewer({ csvData, pdfData }: ComparisonViewerProps) {
               <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Class</th>
               <th className="border border-slate-300 px-3 py-2 text-left font-semibold">CSV Trainer</th>
               <th className="border border-slate-300 px-3 py-2 text-left font-semibold">PDF Trainer</th>
+              <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Theme</th>
               <th className="border border-slate-300 px-3 py-2 text-center font-semibold w-12">Details</th>
             </tr>
           </thead>
@@ -354,6 +365,9 @@ export function ComparisonViewer({ csvData, pdfData }: ComparisonViewerProps) {
                 </td>
                 <td className={`border border-slate-300 px-3 py-2 ${result.discrepancies.trainerMismatch ? 'text-slate-900 font-semibold bg-amber-100/70' : 'text-slate-700'}`}>
                   {result.pdf?.trainer || '—'}
+                </td>
+                <td className={`border border-slate-300 px-3 py-2 ${result.discrepancies.themeMismatch ? 'text-slate-900 font-semibold bg-amber-100/70' : 'text-slate-700'}`}>
+                  {result.csv?.theme || result.pdf?.theme || '—'}
                 </td>
                 <td className="border border-slate-300 px-3 py-2 text-center">
                   {!result.isMatch && (

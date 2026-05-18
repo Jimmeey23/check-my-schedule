@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { readCSVFile } from '@/lib/csvParser';
 import { parsePDF, parsePDFToClassData, scheduleToPdfClassData } from '@/lib/pdfParser';
+import { applyPdfDataThemesToSchedule, collectThemeCandidates, mergeVisionThemesIntoPdfData, renderPdfPagesForThemeVision } from '@/lib/pdfThemeVision';
 import { buildCleanedPdfSheetRows, CLEANED_PDF_SHEET_NAME } from '@/lib/cleanedPdfSheet';
 import { normalizeSchedule, compareSchedules, normalizeLocation } from '@/lib/normalizers';
 import { LOCATION_QUERY_PARAM, normalizeLocationFilterValue, updateLocationSearchParams } from '@/lib/urlLocationFilter';
@@ -26,7 +27,7 @@ import {
   shouldRestorePersistedScheduleSnapshot,
 } from '@/lib/persistedScheduleState';
 import type { UploadedFile, WeekSchedule, ScheduleComparisonResult, NormalizedClass, ClassData, PdfClassData } from '@/types/schedule';
-import { clearPersistedUploadState, deletePersistedPdf, invokeMomenceFunction, loadPersistedUploadState, savePersistedUploadState, syncCleanedPdfSheet, uploadPersistedPdf, urlLooksLikePdf } from '@/lib/supabaseClient';
+import { clearPersistedUploadState, deletePersistedPdf, invokeMomenceFunction, invokePdfThemeVision, loadPersistedUploadState, savePersistedUploadState, syncCleanedPdfSheet, uploadPersistedPdf, urlLooksLikePdf } from '@/lib/supabaseClient';
 import { type MomenceClassData } from '@/types/momence';
 import { parseMomenceSessions } from '@/components/MomenceTab';
 import { toast } from '@/hooks/use-toast';
@@ -54,6 +55,7 @@ const Index = () => {
   const [persistenceReady, setPersistenceReady] = useState(false);
   const pdfPreviewUrlsRef = useRef<Record<string, string>>({});
   const pdfSchedulesRef = useRef<Map<string, WeekSchedule>>(new Map());
+  const csvClassDataRef = useRef<{[day: string]: ClassData[]} | null>(null);
 
   const completedPdfUploads = useMemo(
     () => uploadedFiles.filter(file => file.type === 'pdf' && file.status === 'completed'),
@@ -245,6 +247,10 @@ const Index = () => {
   }, [pdfSchedules]);
 
   useEffect(() => {
+    csvClassDataRef.current = csvClassData;
+  }, [csvClassData]);
+
+  useEffect(() => {
     if (defaultLocationFilter === 'all') return;
     if (sharedLocationFilter !== 'all') return;
 
@@ -339,11 +345,31 @@ const Index = () => {
         }
       } else {
         // Real PDF parsing - NO MOCK DATA
-        const schedule = await parsePDF(file);
+        let schedule = await parsePDF(file);
         const location = schedule.location;
 
         // Parse PDF to ClassData format (reuse parsed schedule to avoid re-parsing file)
-        const pdfData = await parsePDFToClassData(file, schedule);
+        let pdfData = await parsePDFToClassData(file, schedule);
+
+        try {
+          const pageImages = await renderPdfPagesForThemeVision(file);
+          if (pageImages.length > 0) {
+            const themeMatches = await invokePdfThemeVision(
+              pdfData,
+              pageImages,
+              collectThemeCandidates(csvClassDataRef.current)
+            );
+            const enrichedPdfData = mergeVisionThemesIntoPdfData(pdfData, themeMatches);
+
+            if (enrichedPdfData.some((row, index) => row.theme !== pdfData[index]?.theme)) {
+              pdfData = enrichedPdfData;
+              schedule = applyPdfDataThemesToSchedule(schedule, pdfData);
+            }
+          }
+        } catch (themeError) {
+          console.warn('Visual PDF theme enrichment skipped.', themeError);
+        }
+
         let storagePath: string | undefined;
         let previewUrl = URL.createObjectURL(file);
 

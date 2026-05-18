@@ -42,7 +42,7 @@ interface SideBySideViewerProps {
 }
 
 type RowStatus = 'match' | 'mismatch' | 'csv-only' | 'pdf-only';
-type IssueType = 'trainer-mismatch' | 'class-mismatch' | 'time-mismatch' | 'location-mismatch' | 'csv-only' | 'pdf-only';
+type IssueType = 'trainer-mismatch' | 'class-mismatch' | 'time-mismatch' | 'location-mismatch' | 'theme-mismatch' | 'csv-only' | 'pdf-only';
 type QuickFilter = string; // 'all' | 'matches' | 'mismatches' | location string
 type GroupBy = 'day' | 'location' | 'both' | 'none';
 type GroupSection = { key: string; label: string; subLabel?: string; rows: AlignedRow[] };
@@ -108,8 +108,9 @@ function deriveIssueTypes(row: ComparisonAlignedRow): IssueType[] {
   if (differences?.trainer) issues.push('trainer-mismatch');
   if (differences?.time) issues.push('time-mismatch');
   if (differences?.location) issues.push('location-mismatch');
+  if (differences?.theme) issues.push('theme-mismatch');
 
-  return issues.length > 0 ? issues : ['class-mismatch'];
+  return issues;
 }
 
 function getRowStatus(row: ComparisonAlignedRow): RowStatus {
@@ -193,6 +194,13 @@ function getStatusInfo(row: AlignedRow): { icon: React.ReactNode; label: string;
         color: 'text-slate-800',
         badgeClass: 'border-amber-200 bg-amber-50/80',
       };
+    case 'theme-mismatch':
+      return {
+        icon: <Wand2 className="w-4 h-4 text-amber-700" />,
+        label: 'Theme',
+        color: 'text-slate-800',
+        badgeClass: 'border-amber-200 bg-amber-50/80',
+      };
     default:
       return {
         icon: <AlertTriangle className="w-4 h-4 text-amber-700" />,
@@ -213,11 +221,18 @@ function getIssueLabel(issue: IssueType): string {
       return 'Time Mismatch';
     case 'location-mismatch':
       return 'Location Mismatch';
+    case 'theme-mismatch':
+      return 'Theme Mismatch';
     case 'csv-only':
       return 'Not in PDF';
     case 'pdf-only':
       return 'Not in CSV';
   }
+}
+
+function getIssueSummary(row: AlignedRow): string {
+  if (row.matchStatus !== 'mismatch') return getStatusInfo(row).label;
+  return row.issueTypes.length > 0 ? row.issueTypes.map(getIssueLabel).join(' + ') : 'Mismatch';
 }
 
 function getCombinedLocationLabel(row: AlignedRow): string {
@@ -400,7 +415,7 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
   };
 
   const generateCSVExport = (): string => {
-    const headers = ['Day', 'Location', 'CSV Time', 'CSV Class', 'CSV Trainer', 'Status', 'PDF Time', 'PDF Class', 'PDF Trainer'];
+    const headers = ['Day', 'Location', 'CSV Time', 'CSV Class', 'CSV Trainer', 'CSV Theme', 'Status', 'PDF Time', 'PDF Class', 'PDF Trainer', 'PDF Theme'];
     const rows = allAlignedData.map(row => {
       const editablePdfRow = getEditablePdfRow(row.pdfClass);
 
@@ -410,10 +425,12 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
         row.csvClass?.time || '',
         row.csvClass?.className || '',
         row.csvClass?.trainer || '',
-        row.matchStatus === 'mismatch' ? row.issueTypes.map(getIssueLabel).join(' + ') : getStatusInfo(row).label,
+        row.csvClass?.theme || '',
+        getIssueSummary(row),
         editablePdfRow?.time || '',
         editablePdfRow?.className || '',
         editablePdfRow?.trainer || '',
+        editablePdfRow?.theme || row.pdfComparedClass?.theme || '',
       ];
     });
 
@@ -451,11 +468,13 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
     htmlTable += `<td style="${headerStyles}">CSV Class</td>`;
     htmlTable += `<td style="${headerStyles}">CSV Trainer</td>`;
     htmlTable += `<td style="${headerStyles}">CSV Location</td>`;
+    htmlTable += `<td style="${headerStyles}">CSV Theme</td>`;
     htmlTable += `<td style="${headerStyles}">Status</td>`;
     htmlTable += `<td style="${headerStyles}">PDF Time</td>`;
     htmlTable += `<td style="${headerStyles}">PDF Class</td>`;
     htmlTable += `<td style="${headerStyles}">PDF Trainer</td>`;
     htmlTable += `<td style="${headerStyles}">PDF Location</td>`;
+    htmlTable += `<td style="${headerStyles}">PDF Theme</td>`;
     htmlTable += `</tr>\n`;
 
     mismatchRowsOnly.forEach(row => {
@@ -466,11 +485,13 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
       htmlTable += `<td style="${cellStyles}">${row.csvClass?.className || '—'}</td>`;
       htmlTable += `<td style="${cellStyles}">${row.csvClass?.trainer || '—'}</td>`;
       htmlTable += `<td style="${cellStyles}">${row.csvClass?.normalizedLocation || row.csvClass?.location || '—'}</td>`;
-      htmlTable += `<td style="${cellStyles}">${row.matchStatus === 'mismatch' ? row.issueTypes.map(getIssueLabel).join(' + ') : getStatusInfo(row).label}</td>`;
+      htmlTable += `<td style="${cellStyles}">${row.csvClass?.theme || '—'}</td>`;
+      htmlTable += `<td style="${cellStyles}">${getIssueSummary(row)}</td>`;
       htmlTable += `<td style="${cellStyles}">${editablePdfRow?.time || '—'}</td>`;
       htmlTable += `<td style="${cellStyles}">${editablePdfRow?.className || '—'}</td>`;
       htmlTable += `<td style="${cellStyles}">${editablePdfRow?.trainer || '—'}</td>`;
       htmlTable += `<td style="${cellStyles}">${editablePdfRow?.location || row.pdfComparedClass?.normalizedLocation || '—'}</td>`;
+      htmlTable += `<td style="${cellStyles}">${editablePdfRow?.theme || row.pdfComparedClass?.theme || '—'}</td>`;
       htmlTable += `</tr>\n`;
     });
 
@@ -547,7 +568,7 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
     });
   };
 
-  const handleCellEdit = (uniqueKey: string, field: 'time' | 'className' | 'trainer' | 'location', value: string) => {
+  const handleCellEdit = (uniqueKey: string, field: 'time' | 'className' | 'trainer' | 'location' | 'theme', value: string) => {
     const updated = [...editablePdfData];
     const index = updated.findIndex(item => item.uniqueKey === uniqueKey);
     if (index === -1) return;
@@ -560,8 +581,8 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
   };
 
   const exportPdfData = () => {
-    const headers = ['Day', 'Time', 'Class Name', 'Trainer', 'Location'];
-    const rows = editablePdfData.map(item => [item.day, item.time, item.className, item.trainer, item.location || '']);
+    const headers = ['Day', 'Time', 'Class Name', 'Trainer', 'Location', 'Theme'];
+    const rows = editablePdfData.map(item => [item.day, item.time, item.className, item.trainer, item.location || '', item.theme || '']);
 
     const csvContent = [headers.join(','), ...rows.map(r => r.map(cell => `"${cell}"`).join(','))].join('\n');
     downloadFile(csvContent, 'edited-schedule-data.csv', 'text/csv');
@@ -585,7 +606,7 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
     );
   }
 
-  const totalCols = groupBy === 'none' ? 10 : groupBy === 'both' ? 8 : 9;
+  const totalCols = groupBy === 'none' ? 12 : groupBy === 'both' ? 10 : 11;
 
   return (
     <div className="flex min-h-0 flex-col h-full gap-4">
@@ -723,7 +744,7 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
 
       {/* Table */}
       <div className="min-h-0 h-[70vh] flex-1 overflow-x-auto overflow-y-auto rounded-[28px] border border-slate-200/80 bg-white shadow-sm">
-        <table className="min-w-[1320px] w-max border-collapse text-[13px] leading-5">
+        <table className="min-w-[1560px] w-max border-collapse text-[13px] leading-5">
           <thead>
             <tr className="text-slate-500">
               <th rowSpan={2} className="sticky top-0 z-30 h-[96px] min-w-[48px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-4 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">#</th>
@@ -733,17 +754,19 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
               {(groupBy === 'none' || groupBy === 'day') && (
                 <th rowSpan={2} className="sticky top-0 z-30 h-[96px] min-w-[220px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-5 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Location</th>
               )}
-              <th colSpan={3} className="sticky top-0 z-20 h-[48px] border-r border-slate-200/40 bg-[#123a73] px-3 py-0 text-center text-[11px] font-black tracking-[0.24em] uppercase text-white align-middle">CSV</th>
+              <th colSpan={4} className="sticky top-0 z-20 h-[48px] border-r border-slate-200/40 bg-[#123a73] px-3 py-0 text-center text-[11px] font-black tracking-[0.24em] uppercase text-white align-middle">CSV</th>
               <th rowSpan={2} className="sticky top-0 z-30 h-[96px] min-w-[128px] border-x border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-4 py-0 text-center text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Status</th>
-              <th colSpan={3} className="sticky top-0 z-20 h-[48px] border-r border-slate-200/40 bg-[#123a73] px-3 py-0 text-center text-[11px] font-black tracking-[0.24em] uppercase text-white align-middle">PDF</th>
+              <th colSpan={4} className="sticky top-0 z-20 h-[48px] border-r border-slate-200/40 bg-[#123a73] px-3 py-0 text-center text-[11px] font-black tracking-[0.24em] uppercase text-white align-middle">PDF</th>
             </tr>
             <tr className="z-10 text-slate-500">
               <th className="sticky top-[48px] z-20 h-[48px] min-w-[110px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-5 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Time</th>
               <th className="sticky top-[48px] z-20 h-[48px] min-w-[260px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-5 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Class</th>
               <th className="sticky top-[48px] z-20 h-[48px] min-w-[240px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-5 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Trainer</th>
+              <th className="sticky top-[48px] z-20 h-[48px] min-w-[180px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-5 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Theme</th>
               <th className="sticky top-[48px] z-20 h-[48px] min-w-[110px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-5 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Time</th>
               <th className="sticky top-[48px] z-20 h-[48px] min-w-[260px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-5 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Class</th>
               <th className="sticky top-[48px] z-20 h-[48px] min-w-[240px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-5 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Trainer</th>
+              <th className="sticky top-[48px] z-20 h-[48px] min-w-[180px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-5 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Theme</th>
             </tr>
           </thead>
           <tbody>
@@ -828,6 +851,9 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
                       <td className="min-w-[240px] border-r border-slate-200/70 px-3 py-2.5 text-xs text-slate-700 align-middle whitespace-normal break-words">
                         {row.csvClass?.trainer || <span className="text-slate-300">—</span>}
                       </td>
+                      <td className="min-w-[180px] border-r border-slate-200/70 px-3 py-2.5 text-xs text-slate-700 align-middle whitespace-normal break-words">
+                        {row.csvClass?.theme || <span className="text-slate-300">—</span>}
+                      </td>
                       <td className="border-x border-slate-200 px-3 py-2.5 text-center align-middle">
                         <div className={`inline-flex h-8 w-[110px] items-center justify-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-1 shadow-sm ${statusInfo.badgeClass}`}>
                           {statusInfo.icon}
@@ -861,6 +887,16 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
                             value={editablePdfRow.trainer}
                             onChange={e => handleCellEdit(editablePdfRow.uniqueKey, 'trainer', e.target.value)}
                             className="min-w-[220px] border border-transparent bg-transparent px-1 py-0.5 text-xs text-slate-700 focus:outline-none focus:ring-0 focus:border-slate-200 rounded-md"
+                          />
+                        ) : <span className="text-slate-300">—</span>}
+                      </td>
+                      <td className="min-w-[180px] border-r border-slate-200/70 px-3 py-2.5 text-xs text-slate-700 align-middle">
+                        {editablePdfRow ? (
+                          <input
+                            type="text"
+                            value={editablePdfRow.theme || ''}
+                            onChange={e => handleCellEdit(editablePdfRow.uniqueKey, 'theme', e.target.value)}
+                            className="min-w-[160px] border border-transparent bg-transparent px-1 py-0.5 text-xs text-slate-700 focus:outline-none focus:ring-0 focus:border-slate-200 rounded-md"
                           />
                         ) : <span className="text-slate-300">—</span>}
                       </td>

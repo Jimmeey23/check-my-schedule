@@ -57,7 +57,8 @@ function formatThemeText(text: string): string {
   const trimmed = normalizeExtractedText(
     text
       .replace(/[⚡✨⭐🔥💥🎵🎶]\uFE0F?/gu, ' ')
-      .replace(/^[\s,;:|–—-]+/, '')
+      .replace(/^[\s([{\],;:|–—-]+/, '')
+      .replace(/[\s)\]}]+$/, '')
       .trim()
   );
   if (!trimmed) return '';
@@ -119,6 +120,11 @@ function extractTrailingTextAfterTrainer(text: string, trainer: string | null | 
   return bestTrailing;
 }
 
+function isBracketedThemeText(text: string): boolean {
+  const cleaned = normalizeExtractedText(text);
+  return /^\(\s*[^)]+\s*\)$/.test(cleaned) || /^\[\s*[^\]]+\s*\]$/.test(cleaned);
+}
+
 function looksLikeTheme(text: string): boolean {
   const cleaned = formatThemeText(text);
   if (!cleaned) return false;
@@ -139,11 +145,11 @@ function extractTheme(text: string, trainer: string | null | undefined): string 
     return themeAfterMarker || null;
   }
 
-  const knownTheme = findKnownTheme(cleaned);
+  const knownTheme = !matchClassName(cleaned) && !matchTrainer(cleaned) ? findKnownTheme(cleaned) : null;
   if (knownTheme) return knownTheme;
 
   const trailingAfterTrainer = extractTrailingTextAfterTrainer(cleaned, trainer);
-  if (looksLikeTheme(trailingAfterTrainer)) {
+  if (isBracketedThemeText(trailingAfterTrainer) && looksLikeTheme(trailingAfterTrainer)) {
     return formatThemeText(trailingAfterTrainer);
   }
 
@@ -986,6 +992,66 @@ function parseDayClasses(lines: string[], dayIndex: number): ScheduleClass[] {
   return classes;
 }
 
+function isDayHeaderText(text: string): boolean {
+  const trimmed = text.trim();
+  return DAY_PATTERNS.some(pattern => pattern.regex.test(trimmed) && trimmed.length < 30);
+}
+
+function parseDayClassesFromPositionedItems(items: TextItem[], dayIndex: number): ScheduleClass[] {
+  const scheduleItems = items.filter(item => {
+    const text = item.str.trim();
+    return text && !isDayHeaderText(text);
+  });
+
+  const timeAnchors = scheduleItems
+    .filter(item => TIME_PATTERN.test(item.str.trim()))
+    .sort((a, b) => b.y - a.y || a.x - b.x);
+
+  const classes: ScheduleClass[] = [];
+  let classCounter = 0;
+
+  for (const anchor of timeAnchors) {
+    const anchorText = anchor.str.trim();
+    const rowTolerance = Math.max(6, Math.min(9, (anchor.height || 10) * 0.8));
+    const rowItems = scheduleItems
+      .filter(item => Math.abs(item.y - anchor.y) <= rowTolerance)
+      .sort((a, b) => a.x - b.x);
+    const line = joinLineItems(rowItems);
+    const parsed = parseClassLine(line);
+
+    if (!parsed) continue;
+
+    classes.push({
+      id: `pdf-${dayIndex}-${classCounter++}`,
+      ...parsed,
+      time: anchorText,
+    });
+  }
+
+  return classes;
+}
+
+function scoreParsedClasses(classes: ScheduleClass[]): number {
+  return classes.reduce((score, scheduleClass) => {
+    const hasSpecificStrengthVariant = /^Studio Strength Lab \(.+\)$/.test(scheduleClass.className);
+    return score +
+      10 +
+      (scheduleClass.className ? 3 : 0) +
+      (hasSpecificStrengthVariant ? 3 : 0) +
+      (scheduleClass.trainer && scheduleClass.trainer !== 'TBD' ? 3 : 0) +
+      (scheduleClass.theme ? 1 : 0);
+  }, 0);
+}
+
+function chooseBestParsedClasses(positionedClasses: ScheduleClass[], lineClasses: ScheduleClass[]): ScheduleClass[] {
+  if (positionedClasses.length > lineClasses.length) return positionedClasses;
+  if (lineClasses.length > positionedClasses.length) return lineClasses;
+
+  return scoreParsedClasses(positionedClasses) >= scoreParsedClasses(lineClasses)
+    ? positionedClasses
+    : lineClasses;
+}
+
 // =====================================================================
 // COLUMNAR LAYOUT DETECTION AND PARSING
 // =====================================================================
@@ -1184,8 +1250,10 @@ function parsePageColumnar(items: TextItem[]): { days: DaySchedule[]; isColumnar
     if (dayItems.length === 0) continue;
 
     const dayIdx = DAYS_ORDER.indexOf(region.day);
+    const positionedClasses = parseDayClassesFromPositionedItems(dayItems, dayIdx);
     const lines = groupIntoLines(dayItems);
-    const classes = parseDayClasses(lines, dayIdx);
+    const lineClasses = parseDayClasses(lines, dayIdx);
+    const classes = chooseBestParsedClasses(positionedClasses, lineClasses);
 
     if (classes.length > 0) {
       // Check if this day already exists (from another region/row)
@@ -1538,17 +1606,9 @@ function applyRecoveredThemesToDayClasses(
     }
   }
 
-  for (let classIndex = 0; classIndex < classes.length; classIndex++) {
-    if (!unusedRows.has(classIndex)) continue;
-    const theme = rowThemes[classIndex];
-    if (!theme) continue;
-
-    const scheduleClass = classes[classIndex];
-    scheduleClass.theme = scheduleClass.theme
-      ? mergeThemeParts(scheduleClass.theme, theme) || scheduleClass.theme
-      : theme;
-    unusedRows.delete(classIndex);
-  }
+  // Do not assign leftover legend colors by row index. On layouts where the legend
+  // sits beside a day column, index-based fallback can attach legend entries to
+  // unrelated Sunday rows.
 }
 
 async function buildColorThemeMap(arrayBuffer: ArrayBuffer, layout: PdfTemplateLayout, pages: TextItem[][]): Promise<Record<string, string[]>> {
@@ -1559,13 +1619,16 @@ async function buildColorThemeMap(arrayBuffer: ArrayBuffer, layout: PdfTemplateL
     const pageLines = groupIntoPositionedLines(pages[pageIndex] || [], pageIndex);
     return detectThemeLegendEntries(pageLines, pageIndex, sample);
   });
+  const allLegendEntries = legendByPage.flat();
 
   const themesByDay: Record<string, string[]> = {};
 
   for (const [day, rows] of Object.entries(layout.rowsByDay)) {
     themesByDay[day] = rows.map(row => {
       const sample = renderedPages[row.pageIndex];
-      const legendEntries = legendByPage[row.pageIndex] || [];
+      const legendEntries = (legendByPage[row.pageIndex] || []).length > 0
+        ? legendByPage[row.pageIndex]
+        : allLegendEntries;
       if (!sample || legendEntries.length === 0) return '';
 
       const stripTheme = findThemeByRowHighlight(sample, row, legendEntries);
@@ -1638,6 +1701,21 @@ export async function parsePDF(file: File): Promise<WeekSchedule> {
     }
   }
 
+  try {
+    const templateLayout = buildTemplateLayoutFromPages(pages);
+    const themesByDay = await buildColorThemeMap(arrayBuffer.slice(0), templateLayout, pages);
+
+    for (const day of days) {
+      applyRecoveredThemesToDayClasses(
+        day.classes,
+        templateLayout.rowsByDay[day.day] || [],
+        themesByDay[day.day] || []
+      );
+    }
+  } catch (error) {
+    console.warn('[PDF Parser] Theme legend recovery skipped', error);
+  }
+
   return {
     id: crypto.randomUUID(),
     weekStart,
@@ -1674,6 +1752,7 @@ export function scheduleToPdfClassData(schedule: WeekSchedule): PdfClassData[] {
           className: normalizedClass,
           trainer: normalizedTrainer,
           location: normalizedLocation,
+          theme: cls.theme,
           uniqueKey: uniqueKey,
         });
       }
@@ -1695,6 +1774,8 @@ export async function parsePDFToClassData(file: File, parsedSchedule?: WeekSched
 export const __pdfParserTestUtils = {
   groupIntoLines,
   parseDayClasses,
+  parseDayClassesFromPositionedItems,
+  parsePageColumnar,
   matchClassName,
   matchTrainer,
   extractTheme,

@@ -20,14 +20,8 @@ import { applyPdfDataThemesToSchedule, collectThemeCandidates, mergeVisionThemes
 import { buildCleanedPdfSheetRows, CLEANED_PDF_SHEET_NAME } from '@/lib/cleanedPdfSheet';
 import { normalizeSchedule, compareSchedules, normalizeLocation } from '@/lib/normalizers';
 import { LOCATION_QUERY_PARAM, normalizeLocationFilterValue, updateLocationSearchParams } from '@/lib/urlLocationFilter';
-import {
-  createPersistedScheduleSnapshot,
-  hasPersistableScheduleState,
-  restorePersistedScheduleSnapshot,
-  shouldRestorePersistedScheduleSnapshot,
-} from '@/lib/persistedScheduleState';
 import type { UploadedFile, WeekSchedule, ScheduleComparisonResult, NormalizedClass, ClassData, PdfClassData } from '@/types/schedule';
-import { clearPersistedUploadState, deletePersistedPdf, invokeMomenceFunction, invokePdfThemeVision, loadPersistedUploadState, savePersistedUploadState, syncCleanedPdfSheet, uploadPersistedPdf, urlLooksLikePdf } from '@/lib/supabaseClient';
+import { invokeMomenceFunction, invokePdfThemeVision, syncCleanedPdfSheet } from '@/lib/supabaseClient';
 import { type MomenceClassData } from '@/types/momence';
 import { parseMomenceSessions } from '@/components/MomenceTab';
 import { toast } from '@/hooks/use-toast';
@@ -52,7 +46,6 @@ const Index = () => {
   const [momenceSessions, setMomenceSessions] = useState<MomenceClassData[]>([]);
   const [momenceLoading, setMomenceLoading] = useState(false);
   const [momenceError, setMomenceError] = useState<string | null>(null);
-  const [persistenceReady, setPersistenceReady] = useState(false);
   const pdfPreviewUrlsRef = useRef<Record<string, string>>({});
   const pdfSchedulesRef = useRef<Map<string, WeekSchedule>>(new Map());
   const csvClassDataRef = useRef<{[day: string]: ClassData[]} | null>(null);
@@ -192,53 +185,6 @@ const Index = () => {
   }, [completedCsvUploads, completedPdfUploads, pdfLocations]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    const hydratePersistedState = async () => {
-      // Auto-load from previous session is disabled
-      setPersistenceReady(true);
-      return;
-      
-      // Previous auto-load logic is commented out below
-      /*
-      try {
-        const { snapshot, pdfPreviewUrls } = await loadPersistedUploadState();
-        if (!snapshot || cancelled) return;
-
-        if (!shouldRestorePersistedScheduleSnapshot(snapshot)) {
-          clearPersistedUploadState().catch(error => {
-            console.error('Failed to clear fresh persisted upload state', error);
-          });
-          return;
-        }
-
-        const restored = restorePersistedScheduleSnapshot(snapshot);
-        setUploadedFiles(restored.uploadedFiles);
-        setCsvSchedule(restored.csvSchedule);
-        setCsvClassData(restored.csvClassData);
-        setPdfSchedules(restored.pdfSchedules);
-        setPdfClassDataByLocation(restored.pdfClassDataByLocation);
-        setPdfPreviewUrls(pdfPreviewUrls || {});
-
-        if (restored.uploadedFiles.length > 0) {
-          setActiveTab('side-by-side');
-        }
-      } catch (error) {
-        console.error('Failed to restore persisted upload state', error);
-      } finally {
-        if (!cancelled) setPersistenceReady(true);
-      }
-      */
-    };
-
-    hydratePersistedState();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
     pdfPreviewUrlsRef.current = pdfPreviewUrls;
   }, [pdfPreviewUrls]);
 
@@ -262,33 +208,6 @@ const Index = () => {
       Object.values(pdfPreviewUrlsRef.current).forEach(url => revokePreviewUrl(url));
     };
   }, []);
-
-  useEffect(() => {
-    if (!persistenceReady) return;
-
-    const currentState = {
-      uploadedFiles,
-      csvSchedule,
-      csvClassData,
-      pdfSchedules,
-      pdfClassDataByLocation,
-    };
-
-    if (!hasPersistableScheduleState(currentState)) {
-      clearPersistedUploadState().catch(error => {
-        console.error('Failed to clear persisted upload state', error);
-      });
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      savePersistedUploadState(createPersistedScheduleSnapshot(currentState)).catch(error => {
-        console.error('Failed to persist upload state', error);
-      });
-    }, 300);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [csvClassData, csvSchedule, pdfClassDataByLocation, pdfSchedules, persistenceReady, uploadedFiles]);
 
   const syncPdfSchedulesToSheet = useCallback(async (schedules: Iterable<WeekSchedule>) => {
     try {
@@ -375,21 +294,7 @@ const Index = () => {
           console.warn('Visual PDF theme enrichment skipped.', themeError);
         }
 
-        let storagePath: string | undefined;
-        let previewUrl = URL.createObjectURL(file);
-
-        try {
-          const persistedPdf = await uploadPersistedPdf(file, newFile.id);
-          storagePath = persistedPdf.storagePath;
-          if (persistedPdf.signedUrl && await urlLooksLikePdf(persistedPdf.signedUrl)) {
-            revokePreviewUrl(previewUrl);
-            previewUrl = persistedPdf.signedUrl;
-          } else if (persistedPdf.signedUrl) {
-            console.warn('Persisted preview URL did not return PDF content. Keeping the local blob preview instead.', persistedPdf.signedUrl);
-          }
-        } catch (persistError) {
-          console.warn('PDF was parsed locally but could not be persisted to Supabase storage.', persistError);
-        }
+        const previewUrl = URL.createObjectURL(file);
 
         setPdfPreviewUrls(prev => ({
           ...prev,
@@ -405,7 +310,7 @@ const Index = () => {
         });
 
         setUploadedFiles(prev => prev.map(f => f.id === newFile.id ? {
-          ...f, status: 'completed' as const, data: schedule, location, storagePath
+          ...f, status: 'completed' as const, data: schedule, location
         } : f));
 
         const nextPdfSchedules = new Map(pdfSchedulesRef.current);
@@ -438,12 +343,6 @@ const Index = () => {
         delete next[id];
         return next;
       });
-
-      if (file.type === 'pdf' && file.storagePath) {
-        deletePersistedPdf(file.storagePath).catch(error => {
-          console.error('Failed to delete persisted PDF', error);
-        });
-      }
 
       if (file.type === 'pdf' && file.location) {
         setPdfSchedules(prev => {
@@ -481,9 +380,6 @@ const Index = () => {
     setActiveTab('upload');
     setSearchParams(current => updateLocationSearchParams(current, 'all'));
     void syncPdfSchedulesToSheet([]);
-    clearPersistedUploadState().catch(error => {
-      console.error('Failed to clear persisted upload state', error);
-    });
   }, [setSearchParams, syncPdfSchedulesToSheet]);
 
   const handleUpdatePdfSchedule = useCallback((fileId: string, updatedSchedule: WeekSchedule) => {

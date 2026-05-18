@@ -157,7 +157,6 @@ export interface UploadedFile {
   status: 'uploading' | 'processing' | 'completed' | 'error';
   error?: string;
   location?: string;
-  storagePath?: string;
 }
 
 export type UploadedPDF = UploadedFile;

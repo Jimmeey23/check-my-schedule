@@ -207,18 +207,18 @@ describe('PdfSourceEditorTab', () => {
     renderHarness();
 
     await screen.findByTestId('template-MONDAY-0-time');
-    expect(screen.getAllByRole('button', { name: /remove/i })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: /delete row/i })).toHaveLength(1);
 
     fireEvent.click(screen.getByRole('button', { name: /add class/i }));
 
     await waitFor(() => {
-      expect(screen.getAllByRole('button', { name: /remove/i })).toHaveLength(2);
+      expect(screen.getAllByRole('button', { name: /delete row/i })).toHaveLength(2);
     });
 
-    fireEvent.click(screen.getAllByRole('button', { name: /remove/i })[1]);
+    fireEvent.click(screen.getAllByRole('button', { name: /delete row/i })[1]);
 
     await waitFor(() => {
-      expect(screen.getAllByRole('button', { name: /remove/i })).toHaveLength(1);
+      expect(screen.getAllByRole('button', { name: /delete row/i })).toHaveLength(1);
     });
   });
 

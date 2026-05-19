@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useCallback, useMemo, useState, useEffect } from 'react';
 import { ClassData, ComparedClass, FilterState, PdfClassData, ScheduleComparisonResult } from '@/types/schedule';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -32,6 +32,7 @@ import {
   SlidersHorizontal,
   ChevronDown,
   ChevronUp,
+  ArrowUpDown,
 } from 'lucide-react';
 
 interface SideBySideViewerProps {
@@ -45,6 +46,21 @@ type RowStatus = 'match' | 'mismatch' | 'csv-only' | 'pdf-only';
 type IssueType = 'trainer-mismatch' | 'class-mismatch' | 'time-mismatch' | 'location-mismatch' | 'theme-mismatch' | 'csv-only' | 'pdf-only';
 type QuickFilter = string; // 'all' | 'matches' | 'mismatches' | location string
 type GroupBy = 'day' | 'location' | 'both' | 'none';
+type SortColumn =
+  | 'default'
+  | 'day'
+  | 'location'
+  | 'csvTime'
+  | 'csvClass'
+  | 'csvTrainer'
+  | 'csvTheme'
+  | 'status'
+  | 'pdfTime'
+  | 'pdfClass'
+  | 'pdfTrainer'
+  | 'pdfTheme';
+type SortDirection = 'asc' | 'desc';
+type SortConfig = { column: SortColumn; direction: SortDirection };
 type GroupSection = { key: string; label: string; subLabel?: string; rows: AlignedRow[] };
 type GroupMetrics = { matches: number; issues: number; csvOnly: number; pdfOnly: number };
 
@@ -58,6 +74,11 @@ interface AlignedRow {
   matchStatus: RowStatus;
   issueTypes: IssueType[];
 }
+
+const HEADER_BASE_CLASS = 'sticky z-30 border-r border-slate-700/60 bg-transparent px-3 py-0 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-100 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(148,163,184,0.32)]';
+const CSV_HEADER_CLASS = 'sticky z-20 border-r border-slate-700/60 bg-transparent px-3 py-0 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-100 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(125,211,252,0.22)]';
+const PDF_HEADER_CLASS = 'sticky z-20 border-r border-slate-700/60 bg-transparent px-3 py-0 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-indigo-100 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(165,180,252,0.22)]';
+const GROUP_HEADER_CLASS = 'sticky top-0 z-20 h-9 border-r border-slate-700/60 bg-transparent px-3 py-0 text-center text-[10px] font-semibold uppercase tracking-[0.16em] align-middle shadow-[inset_0_-1px_0_rgba(148,163,184,0.32)]';
 
 function getComparedPdfUniqueKey(cls: ComparedClass): string {
   return `${cls.day}-${cls.normalizedTime}-${cls.normalizedClassName}-${cls.normalizedTrainer}`;
@@ -168,19 +189,19 @@ function getStatusInfo(row: AlignedRow): { icon: React.ReactNode; label: string;
 
   if (row.matchStatus === 'csv-only') {
     return {
-      icon: <FileSpreadsheet className="w-4 h-4 text-blue-700" />,
+      icon: <FileSpreadsheet className="w-4 h-4 text-slate-600" />,
       label: 'CSV Only',
       color: 'text-slate-700',
-      badgeClass: 'border-blue-200 bg-blue-50/80',
+      badgeClass: 'border-slate-200 bg-slate-50',
     };
   }
 
   if (row.matchStatus === 'pdf-only') {
     return {
-      icon: <FileText className="w-4 h-4 text-violet-700" />,
+      icon: <FileText className="w-4 h-4 text-slate-600" />,
       label: 'PDF Only',
       color: 'text-slate-700',
-      badgeClass: 'border-violet-200 bg-violet-50/80',
+      badgeClass: 'border-slate-200 bg-slate-50',
     };
   }
 
@@ -283,6 +304,63 @@ function getGroupMetrics(rows: AlignedRow[]): GroupMetrics {
   };
 }
 
+function compareDefaultRows(a: AlignedRow, b: AlignedRow): number {
+  const ai = DAY_ORDER.indexOf(a.day);
+  const bi = DAY_ORDER.indexOf(b.day);
+  if (ai !== bi) {
+    if (ai === -1) return 1;
+    if (bi === -1) return -1;
+    return ai - bi;
+  }
+
+  const timeSort = a.sortTime.localeCompare(b.sortTime);
+  if (timeSort !== 0) return timeSort;
+
+  return getCombinedLocationLabel(a).localeCompare(getCombinedLocationLabel(b));
+}
+
+function compareSortValues(a: string | number, b: string | number): number {
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
+}
+
+function SortableColumnHeader({
+  label,
+  column,
+  sortConfig,
+  onSort,
+}: {
+  label: string;
+  column: SortColumn;
+  sortConfig: SortConfig;
+  onSort: (column: SortColumn) => void;
+}) {
+  const active = sortConfig.column === column;
+  const SortIcon = active
+    ? sortConfig.direction === 'asc'
+      ? ChevronUp
+      : ChevronDown
+    : ArrowUpDown;
+  const iconClass = active
+    ? 'bg-white/15 text-white shadow-[0_0_0_1px_rgba(255,255,255,0.14)] sort-icon-active'
+    : 'text-slate-400 group-hover:bg-white/10 group-hover:text-white';
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(column)}
+      aria-label={`Sort by ${label}`}
+      aria-pressed={active}
+      className="group flex h-full w-full items-center justify-between gap-2 rounded-md text-left uppercase transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/35"
+    >
+      <span>{label}</span>
+      <span className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-all duration-200 ${iconClass}`}>
+        <SortIcon className={`h-3.5 w-3.5 transition-transform duration-200 ${active && sortConfig.direction === 'desc' ? 'rotate-0' : ''}`} />
+      </span>
+    </button>
+  );
+}
+
 export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter = 'all' }: SideBySideViewerProps) {
   const [filters, setFilters] = useState<FilterState>({ day: [], location: [], trainer: [], className: [] });
   const [editablePdfData, setEditablePdfData] = useState<PdfClassData[]>([]);
@@ -293,6 +371,7 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
   const [groupBy, setGroupBy] = useState<GroupBy>('none');
   const [showFilters, setShowFilters] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [sortConfig, setSortConfig] = useState<SortConfig>({ column: 'default', direction: 'asc' });
 
   useEffect(() => {
     if (pdfData) {
@@ -358,14 +437,84 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
   const totalMatches = allAlignedData.filter(row => row.matchStatus === 'match').length;
   const totalNonMatches = allAlignedData.filter(row => row.matchStatus !== 'match').length;
 
+  const getEditablePdfRowIndex = useCallback((pdfClass: PdfClassData | null): number => {
+    if (!pdfClass) return -1;
+
+    const matchingIndexes = editablePdfData
+      .map((row, index) => ({ row, index }))
+      .filter(({ row }) => row.uniqueKey === pdfClass.uniqueKey);
+
+    const targetLocation = normalizeLocation(pdfClass.location);
+    const locationMatch = matchingIndexes.find(({ row }) => {
+      const rowLocation = normalizeLocation(row.location);
+      return Boolean(rowLocation && targetLocation && rowLocation === targetLocation);
+    });
+
+    if (locationMatch) return locationMatch.index;
+    if (matchingIndexes.length === 1) return matchingIndexes[0].index;
+
+    return -1;
+  }, [editablePdfData]);
+
+  const getEditablePdfRow = useCallback((pdfClass: PdfClassData | null): PdfClassData | null => {
+    if (!pdfClass) return null;
+    const index = getEditablePdfRowIndex(pdfClass);
+    return index >= 0 ? editablePdfData[index] : pdfClass;
+  }, [editablePdfData, getEditablePdfRowIndex]);
+
+  const getSortValue = useCallback((row: AlignedRow, column: SortColumn): string | number => {
+    const editablePdfRow = getEditablePdfRow(row.pdfClass);
+
+    switch (column) {
+      case 'day': {
+        const dayIndex = DAY_ORDER.indexOf(row.day);
+        return dayIndex === -1 ? Number.MAX_SAFE_INTEGER : dayIndex;
+      }
+      case 'location':
+        return getCombinedLocationLabel(row);
+      case 'csvTime':
+        return row.csvClass?.normalizedTime || row.csvClass?.time || '';
+      case 'csvClass':
+        return row.csvClass?.normalizedClassName || row.csvClass?.className || '';
+      case 'csvTrainer':
+        return row.csvClass?.normalizedTrainer || row.csvClass?.trainer || '';
+      case 'csvTheme':
+        return row.csvClass?.theme || '';
+      case 'status':
+        return getIssueSummary(row);
+      case 'pdfTime':
+        return normalizeTime(editablePdfRow?.time || row.pdfComparedClass?.time || '');
+      case 'pdfClass':
+        return normalizeClassName(editablePdfRow?.className || row.pdfComparedClass?.className || '');
+      case 'pdfTrainer':
+        return normalizeTrainer(editablePdfRow?.trainer || row.pdfComparedClass?.trainer || '');
+      case 'pdfTheme':
+        return editablePdfRow?.theme || row.pdfComparedClass?.theme || '';
+      case 'default':
+      default:
+        return 0;
+    }
+  }, [getEditablePdfRow]);
+
+  const handleSort = useCallback((column: SortColumn) => {
+    setSortConfig(current => {
+      if (current.column === column) {
+        return { column, direction: current.direction === 'asc' ? 'desc' : 'asc' };
+      }
+
+      return { column, direction: 'asc' };
+    });
+  }, []);
+
   const sortedRows = useMemo(() => {
     return [...allAlignedData].sort((a, b) => {
-      const ai = DAY_ORDER.indexOf(a.day);
-      const bi = DAY_ORDER.indexOf(b.day);
-      if (ai !== bi) { if (ai === -1) return 1; if (bi === -1) return -1; return ai - bi; }
-      return a.sortTime.localeCompare(b.sortTime);
+      const baseSort = sortConfig.column === 'default'
+        ? compareDefaultRows(a, b)
+        : compareSortValues(getSortValue(a, sortConfig.column), getSortValue(b, sortConfig.column)) || compareDefaultRows(a, b);
+
+      return sortConfig.direction === 'asc' ? baseSort : -baseSort;
     });
-  }, [allAlignedData]);
+  }, [allAlignedData, getSortValue, sortConfig]);
 
   const filteredRows = useMemo(() => {
     return sortedRows.filter(row => {
@@ -435,31 +584,6 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
       const row = document.querySelector<HTMLElement>(`[data-mismatch-index="${next}"]`);
       row?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
-  };
-
-  const getEditablePdfRowIndex = (pdfClass: PdfClassData | null): number => {
-    if (!pdfClass) return -1;
-
-    const matchingIndexes = editablePdfData
-      .map((row, index) => ({ row, index }))
-      .filter(({ row }) => row.uniqueKey === pdfClass.uniqueKey);
-
-    const targetLocation = normalizeLocation(pdfClass.location);
-    const locationMatch = matchingIndexes.find(({ row }) => {
-      const rowLocation = normalizeLocation(row.location);
-      return Boolean(rowLocation && targetLocation && rowLocation === targetLocation);
-    });
-
-    if (locationMatch) return locationMatch.index;
-    if (matchingIndexes.length === 1) return matchingIndexes[0].index;
-
-    return -1;
-  };
-
-  const getEditablePdfRow = (pdfClass: PdfClassData | null): PdfClassData | null => {
-    if (!pdfClass) return null;
-    const index = getEditablePdfRowIndex(pdfClass);
-    return index >= 0 ? editablePdfData[index] : pdfClass;
   };
 
   const generateCSVExport = (): string => {
@@ -657,27 +781,27 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
   const totalCols = groupBy === 'none' ? 12 : groupBy === 'both' ? 10 : 11;
 
   return (
-    <div className="flex min-h-0 flex-col h-full gap-4">
+    <div className="flex h-full min-h-0 flex-col gap-3">
 
       {/* Top toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-slate-200/80 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-800 px-4 py-3 text-white shadow-md">
-        <div className="flex items-center gap-4">
-          <p className="text-xs text-slate-300">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
+        <div className="flex items-center gap-3">
+          <p className="text-xs font-medium text-slate-600">
             {visibleRows.length} rows ·{' '}
-            <span className="text-amber-200 font-medium">{mismatchRows.length} issues</span>
+            <span className="font-semibold text-amber-700">{mismatchRows.length} issues</span>
             {' '}· {totalMatches} matches
           </p>
-          <div className="flex items-center gap-1 border-l border-slate-700 pl-4">
+          <div className="flex items-center gap-1 border-l border-slate-200 pl-3">
             <Button
               size="sm"
               variant="ghost"
               onClick={() => scrollToMismatch(activeMismatchIndex - 1)}
               disabled={mismatchRows.length === 0}
-              className="h-7 w-7 rounded-full p-0 text-white hover:bg-white/10 hover:text-white"
+              className="h-7 w-7 rounded-md p-0 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
             >
               <ChevronLeft className="w-3.5 h-3.5" />
             </Button>
-            <span className="text-xs font-mono text-slate-200 min-w-[44px] text-center">
+            <span className="min-w-[44px] text-center font-mono text-xs text-slate-500">
               {mismatchRows.length > 0 ? `${activeMismatchIndex + 1}/${mismatchRows.length}` : '—'}
             </span>
             <Button
@@ -685,7 +809,7 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
               variant="ghost"
               onClick={() => scrollToMismatch(activeMismatchIndex + 1)}
               disabled={mismatchRows.length === 0}
-              className="h-7 w-7 rounded-full p-0 text-white hover:bg-white/10 hover:text-white"
+              className="h-7 w-7 rounded-md p-0 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
             >
               <ChevronRight className="w-3.5 h-3.5" />
             </Button>
@@ -696,15 +820,15 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
             variant="ghost"
             size="sm"
             onClick={() => setShowFilters(f => !f)}
-            className={`h-8 rounded-full text-xs gap-1.5 text-white hover:bg-white/10 hover:text-white ${showFilters ? 'bg-white/10' : ''}`}
+            className={`h-8 rounded-md text-xs gap-1.5 ${showFilters ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
           >
             <SlidersHorizontal className="w-3.5 h-3.5" />
             Filters
             {showFilters ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
           </Button>
-          <div className="w-px h-5 bg-slate-700" />
-          <Button variant="outline" size="sm" onClick={copyMismatchesInTableFormat} className="h-8 rounded-full border-white/15 bg-white/5 text-white hover:bg-white/10 text-xs gap-1.5">
-            {copied ? <Check className="w-3.5 h-3.5 text-emerald-300" /> : <Copy className="w-3.5 h-3.5" />}
+          <div className="w-px h-5 bg-slate-200" />
+          <Button variant="outline" size="sm" onClick={copyMismatchesInTableFormat} className="h-8 rounded-md border-slate-200 bg-white text-xs gap-1.5">
+            {copied ? <Check className="w-3.5 h-3.5 text-emerald-700" /> : <Copy className="w-3.5 h-3.5" />}
             Copy
           </Button>
           <Button
@@ -715,16 +839,16 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
               downloadFile(c, 'schedule-comparison.csv', 'text/csv');
               toast({ title: 'Exported!', description: 'Comparison exported to CSV' });
             }}
-            className="h-8 rounded-full border-white/15 bg-white/5 text-white hover:bg-white/10 text-xs gap-1.5"
+            className="h-8 rounded-md border-slate-200 bg-white text-xs gap-1.5"
           >
             <Download className="w-3.5 h-3.5" />
             Export
           </Button>
-          <Button variant="outline" size="sm" onClick={applyAutoCorrections} className="h-8 rounded-full border-white/15 bg-white text-slate-900 hover:bg-slate-100 text-xs gap-1.5">
+          <Button variant="default" size="sm" onClick={applyAutoCorrections} className="h-8 rounded-md bg-slate-900 text-xs gap-1.5 hover:bg-slate-800">
             <Wand2 className="w-3.5 h-3.5" />
             Auto-Correct
           </Button>
-          <Button variant="outline" size="sm" onClick={exportPdfData} className="h-8 rounded-full border-white/15 bg-white/5 text-white hover:bg-white/10 text-xs gap-1.5">
+          <Button variant="outline" size="sm" onClick={exportPdfData} className="h-8 rounded-md border-slate-200 bg-white text-xs gap-1.5">
             <Download className="w-3.5 h-3.5" />
             Export PDF
           </Button>
@@ -737,12 +861,12 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
       )}
 
       {/* Controls: quick filters + show mismatches + group by */}
-      <div className="flex flex-wrap items-center gap-2 rounded-[24px] border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/80 px-3 py-3 shadow-sm">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
         <Button
           variant={showOnlyMismatches ? 'default' : 'outline'}
           size="sm"
           onClick={() => setShowOnlyMismatches(!showOnlyMismatches)}
-          className="h-8 rounded-full text-xs gap-1.5"
+          className="h-8 rounded-md text-xs gap-1.5"
         >
           <AlertTriangle className="w-3.5 h-3.5" />
           {showOnlyMismatches ? 'Show All' : 'Issues Only'}
@@ -762,7 +886,7 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
             variant={quickFilter === btn.key ? 'default' : 'outline'}
             size="sm"
             onClick={() => setQuickFilter(btn.key)}
-            className={`h-8 rounded-full px-3 text-xs whitespace-nowrap ${quickFilter === btn.key ? 'shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+            className={`h-8 rounded-md px-3 text-xs whitespace-nowrap ${quickFilter === btn.key ? 'bg-slate-900 text-white shadow-none' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
           >
             {btn.label}
           </Button>
@@ -782,7 +906,7 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
               variant={groupBy === opt.key ? 'default' : 'ghost'}
               size="sm"
               onClick={() => setGroupBy(opt.key)}
-              className="h-8 rounded-full text-xs"
+              className="h-8 rounded-md text-xs"
             >
               {opt.label}
             </Button>
@@ -791,40 +915,72 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
       </div>
 
       {/* Table */}
-      <div className="min-h-0 h-[70vh] flex-1 overflow-x-auto overflow-y-auto rounded-[28px] border border-slate-200/80 bg-white shadow-sm">
-        <table className="min-w-[1560px] w-max border-collapse text-[13px] leading-5">
-          <thead>
-            <tr className="text-slate-500">
-              <th rowSpan={2} className="sticky top-0 z-30 h-[96px] min-w-[48px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-4 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">#</th>
+      <div className="min-h-0 h-[70vh] flex-1 overflow-x-auto overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+        <table className="min-w-[1440px] w-max border-collapse text-[12px] leading-5">
+          <thead className="bg-slate-950 text-slate-100">
+            <tr className="bg-slate-950">
+              <th rowSpan={2} className={`${HEADER_BASE_CLASS} top-0 h-[72px] min-w-[44px]`}>
+                <SortableColumnHeader label="#" column="default" sortConfig={sortConfig} onSort={handleSort} />
+              </th>
               {(groupBy === 'none' || groupBy === 'location') && (
-                <th rowSpan={2} className="sticky top-0 z-30 h-[96px] min-w-[112px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-5 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Day</th>
+                <th rowSpan={2} className={`${HEADER_BASE_CLASS} top-0 h-[72px] min-w-[104px]`}>
+                  <SortableColumnHeader label="Day" column="day" sortConfig={sortConfig} onSort={handleSort} />
+                </th>
               )}
               {(groupBy === 'none' || groupBy === 'day') && (
-                <th rowSpan={2} className="sticky top-0 z-30 h-[96px] min-w-[220px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-5 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Location</th>
+                <th rowSpan={2} className={`${HEADER_BASE_CLASS} top-0 h-[72px] min-w-[200px]`}>
+                  <SortableColumnHeader label="Location" column="location" sortConfig={sortConfig} onSort={handleSort} />
+                </th>
               )}
-              <th colSpan={4} className="sticky top-0 z-20 h-[48px] border-r border-slate-200/40 bg-[#123a73] px-3 py-0 text-center text-[11px] font-black tracking-[0.24em] uppercase text-white align-middle">CSV</th>
-              <th rowSpan={2} className="sticky top-0 z-30 h-[96px] min-w-[128px] border-x border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-4 py-0 text-center text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Status</th>
-              <th colSpan={4} className="sticky top-0 z-20 h-[48px] border-r border-slate-200/40 bg-[#123a73] px-3 py-0 text-center text-[11px] font-black tracking-[0.24em] uppercase text-white align-middle">PDF</th>
+              <th colSpan={4} className={`${GROUP_HEADER_CLASS} text-sky-100`}>
+                <span className="inline-flex items-center rounded-full border border-sky-300/30 bg-sky-300/10 px-3 py-1 text-[10px] font-bold tracking-[0.22em] text-sky-100 shadow-[0_0_22px_rgba(56,189,248,0.12)]">
+                  CSV
+                </span>
+              </th>
+              <th rowSpan={2} className={`${HEADER_BASE_CLASS} top-0 h-[72px] min-w-[112px] border-x text-center`}>
+                <SortableColumnHeader label="Status" column="status" sortConfig={sortConfig} onSort={handleSort} />
+              </th>
+              <th colSpan={4} className={`${GROUP_HEADER_CLASS} text-indigo-100`}>
+                <span className="inline-flex items-center rounded-full border border-indigo-300/30 bg-indigo-300/10 px-3 py-1 text-[10px] font-bold tracking-[0.22em] text-indigo-100 shadow-[0_0_22px_rgba(129,140,248,0.12)]">
+                  PDF
+                </span>
+              </th>
             </tr>
-            <tr className="z-10 text-slate-500">
-              <th className="sticky top-[48px] z-20 h-[48px] min-w-[110px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-5 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Time</th>
-              <th className="sticky top-[48px] z-20 h-[48px] min-w-[260px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-5 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Class</th>
-              <th className="sticky top-[48px] z-20 h-[48px] min-w-[240px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-5 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Trainer</th>
-              <th className="sticky top-[48px] z-20 h-[48px] min-w-[180px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-5 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Theme</th>
-              <th className="sticky top-[48px] z-20 h-[48px] min-w-[110px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-5 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Time</th>
-              <th className="sticky top-[48px] z-20 h-[48px] min-w-[260px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-5 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Class</th>
-              <th className="sticky top-[48px] z-20 h-[48px] min-w-[240px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-5 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Trainer</th>
-              <th className="sticky top-[48px] z-20 h-[48px] min-w-[180px] border-r border-slate-200/70 bg-gradient-to-b from-slate-200 to-slate-100 px-5 py-0 text-left text-[11px] font-black tracking-[0.22em] uppercase text-slate-800 whitespace-nowrap align-middle shadow-[inset_0_-1px_0_rgba(51,65,85,0.65)]">Theme</th>
+            <tr className="z-10 bg-slate-950">
+              <th className={`${CSV_HEADER_CLASS} top-9 h-9 min-w-[96px]`}>
+                <SortableColumnHeader label="Time" column="csvTime" sortConfig={sortConfig} onSort={handleSort} />
+              </th>
+              <th className={`${CSV_HEADER_CLASS} top-9 h-9 min-w-[230px]`}>
+                <SortableColumnHeader label="Class" column="csvClass" sortConfig={sortConfig} onSort={handleSort} />
+              </th>
+              <th className={`${CSV_HEADER_CLASS} top-9 h-9 min-w-[220px]`}>
+                <SortableColumnHeader label="Trainer" column="csvTrainer" sortConfig={sortConfig} onSort={handleSort} />
+              </th>
+              <th className={`${CSV_HEADER_CLASS} top-9 h-9 min-w-[170px]`}>
+                <SortableColumnHeader label="Theme" column="csvTheme" sortConfig={sortConfig} onSort={handleSort} />
+              </th>
+              <th className={`${PDF_HEADER_CLASS} top-9 h-9 min-w-[96px]`}>
+                <SortableColumnHeader label="Time" column="pdfTime" sortConfig={sortConfig} onSort={handleSort} />
+              </th>
+              <th className={`${PDF_HEADER_CLASS} top-9 h-9 min-w-[230px]`}>
+                <SortableColumnHeader label="Class" column="pdfClass" sortConfig={sortConfig} onSort={handleSort} />
+              </th>
+              <th className={`${PDF_HEADER_CLASS} top-9 h-9 min-w-[220px]`}>
+                <SortableColumnHeader label="Trainer" column="pdfTrainer" sortConfig={sortConfig} onSort={handleSort} />
+              </th>
+              <th className={`${PDF_HEADER_CLASS} top-9 h-9 min-w-[170px]`}>
+                <SortableColumnHeader label="Theme" column="pdfTheme" sortConfig={sortConfig} onSort={handleSort} />
+              </th>
             </tr>
           </thead>
           <tbody>
             {groupedSections.map(section => (
               <React.Fragment key={section.key}>
                 {section.label && (
-                  <tr className="border-y border-slate-300 bg-slate-200/80">
+                  <tr className="border-y border-slate-200 bg-slate-100">
                     <td
                       colSpan={totalCols}
-                      className="px-4 py-2.5"
+                      className="px-3 py-2"
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <button
@@ -834,9 +990,9 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
                             if (next.has(section.key)) next.delete(section.key); else next.add(section.key);
                             return next;
                           })}
-                          className="flex items-center gap-2 text-xs font-bold text-slate-800 tracking-[0.16em] uppercase"
+                          className="flex items-center gap-2 text-[11px] font-semibold text-slate-700 tracking-[0.12em] uppercase"
                         >
-                          {collapsedGroups.has(section.key) ? <ChevronDown className="h-4 w-4 text-slate-600" /> : <ChevronUp className="h-4 w-4 text-slate-600" />}
+                          {collapsedGroups.has(section.key) ? <ChevronDown className="h-4 w-4 text-slate-500" /> : <ChevronUp className="h-4 w-4 text-slate-500" />}
                           <span>
                             {section.label}
                             {section.subLabel && <span className="text-slate-500 font-semibold"> · {section.subLabel}</span>}
@@ -846,11 +1002,11 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
                           const metrics = getGroupMetrics(section.rows);
                           return (
                             <div className="flex flex-wrap items-center gap-2 text-[11px] font-medium text-slate-600">
-                              <span className="rounded-full border border-slate-300 bg-white px-2.5 py-0.5">{section.rows.length} rows</span>
-                              <span className="rounded-full border border-slate-300 bg-white px-2.5 py-0.5">{metrics.matches} match</span>
-                              <span className="rounded-full border border-slate-300 bg-white px-2.5 py-0.5">{metrics.issues} issue</span>
-                              {metrics.csvOnly > 0 && <span className="rounded-full border border-slate-300 bg-white px-2.5 py-0.5">{metrics.csvOnly} CSV-only</span>}
-                              {metrics.pdfOnly > 0 && <span className="rounded-full border border-slate-300 bg-white px-2.5 py-0.5">{metrics.pdfOnly} PDF-only</span>}
+                              <span className="rounded-md border border-slate-200 bg-white px-2 py-0.5">{section.rows.length} rows</span>
+                              <span className="rounded-md border border-slate-200 bg-white px-2 py-0.5">{metrics.matches} match</span>
+                              <span className="rounded-md border border-slate-200 bg-white px-2 py-0.5">{metrics.issues} issue</span>
+                              {metrics.csvOnly > 0 && <span className="rounded-md border border-slate-200 bg-white px-2 py-0.5">{metrics.csvOnly} CSV-only</span>}
+                              {metrics.pdfOnly > 0 && <span className="rounded-md border border-slate-200 bg-white px-2 py-0.5">{metrics.pdfOnly} PDF-only</span>}
                             </div>
                           );
                         })()}
@@ -860,91 +1016,84 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
                 )}
                 {(collapsedGroups.has(section.key) && section.label ? [] : section.rows).map((row, idx) => {
                   const statusInfo = getStatusInfo(row);
-                  const isMatch = row.matchStatus === 'match';
-                  const isPdfOnly = row.matchStatus === 'pdf-only';
-                  const isCsvOnly = row.matchStatus === 'csv-only';
                   const mismatchIndex = mismatchIndexByRow.get(row);
                   const isActiveMismatch = mismatchIndex !== undefined && mismatchIndex === activeMismatchIndex;
                   const editablePdfRow = getEditablePdfRow(row.pdfClass);
 
-                  const rowBg = isActiveMismatch
-                    ? 'bg-slate-100 hover:bg-slate-100'
-                    : isMatch
-                      ? 'bg-white hover:bg-slate-50/60'
-                      : isPdfOnly || isCsvOnly
-                        ? 'bg-slate-50 hover:bg-slate-100/80'
-                        : 'bg-slate-50/70 hover:bg-slate-100/80';
+                  const rowState = isActiveMismatch
+                    ? 'bg-white shadow-[inset_3px_0_0_rgb(217,119,6)]'
+                    : 'bg-white';
 
                   return (
                     <tr
                       key={`${section.key}-${idx}`}
                       data-mismatch-index={mismatchIndex !== undefined ? mismatchIndex : undefined}
-                      className={`border-b border-slate-200 transition-colors ${rowBg}`}
+                      className={`border-b border-slate-200 transition-colors hover:bg-slate-50 ${rowState}`}
                     >
-                      <td className="border-r border-slate-200/70 px-3 py-2.5 text-xs font-semibold text-slate-400 whitespace-nowrap align-middle">{idx + 1}</td>
+                      <td className="border-r border-slate-200 px-3 py-2 text-xs font-semibold text-slate-400 whitespace-nowrap align-middle">{idx + 1}</td>
                       {(groupBy === 'none' || groupBy === 'location') && (
-                        <td className="border-r border-slate-200/70 px-3 py-2.5 text-xs font-medium text-slate-600 whitespace-nowrap align-middle">{row.day}</td>
+                        <td className="border-r border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 whitespace-nowrap align-middle">{row.day}</td>
                       )}
                       {(groupBy === 'none' || groupBy === 'day') && (
-                        <td className="min-w-[220px] border-r border-slate-200/70 px-3 py-2.5 text-xs text-slate-600 align-middle whitespace-normal break-words">
+                        <td className="min-w-[200px] border-r border-slate-200 px-3 py-2 text-xs text-slate-600 align-middle whitespace-normal break-words">
                           {getCombinedLocationLabel(row)}
                         </td>
                       )}
-                      <td className="border-r border-slate-200/70 px-3 py-2.5 font-mono text-xs text-slate-700 whitespace-nowrap align-middle">
+                      <td className="border-r border-slate-200 px-3 py-2 font-mono text-xs text-slate-700 whitespace-nowrap align-middle">
                         {row.csvClass?.time || <span className="text-slate-300">—</span>}
                       </td>
-                      <td className="min-w-[260px] border-r border-slate-200/70 px-3 py-2.5 text-xs text-slate-800 font-medium align-middle whitespace-normal break-words">
+                      <td className="min-w-[230px] border-r border-slate-200 px-3 py-2 text-xs text-slate-800 font-medium align-middle whitespace-normal break-words">
                         {row.csvClass?.className || <span className="text-slate-300">—</span>}
                       </td>
-                      <td className="min-w-[240px] border-r border-slate-200/70 px-3 py-2.5 text-xs text-slate-700 align-middle whitespace-normal break-words">
+                      <td className="min-w-[220px] border-r border-slate-200 px-3 py-2 text-xs text-slate-700 align-middle whitespace-normal break-words">
                         {row.csvClass?.trainer || <span className="text-slate-300">—</span>}
                       </td>
-                      <td className="min-w-[180px] border-r border-slate-200/70 px-3 py-2.5 text-xs text-slate-700 align-middle whitespace-normal break-words">
+                      <td className="min-w-[170px] border-r border-slate-200 px-3 py-2 text-xs text-slate-700 align-middle whitespace-normal break-words">
                         {row.csvClass?.theme || <span className="text-slate-300">—</span>}
                       </td>
-                      <td className="border-x border-slate-200 px-3 py-2.5 text-center align-middle">
-                        <div className={`inline-flex h-8 w-[110px] items-center justify-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-1 shadow-sm ${statusInfo.badgeClass}`}>
+                      <td className="border-x border-slate-200 px-3 py-2 text-center align-middle">
+                        <div className={`inline-flex h-7 w-[104px] items-center justify-center gap-1 whitespace-nowrap rounded-md border px-2 py-1 ${statusInfo.badgeClass}`}>
                           {statusInfo.icon}
-                          <span className="text-[10px] font-medium text-slate-500">{statusInfo.label}</span>
+                          <span className={`text-[10px] font-semibold ${statusInfo.color}`}>{statusInfo.label}</span>
                         </div>
                       </td>
-                      <td className="border-r border-slate-200/70 px-3 py-2.5 font-mono text-xs text-slate-700 whitespace-nowrap align-middle">
+                      <td className="border-r border-slate-200 px-3 py-2 font-mono text-xs text-slate-700 whitespace-nowrap align-middle">
                         {editablePdfRow ? (
                           <input
                             type="text"
                             value={editablePdfRow.time}
                             onChange={e => handleCellEdit(editablePdfRow, 'time', e.target.value)}
-                            className="min-w-[96px] border border-transparent bg-transparent px-1 py-0.5 text-xs font-mono text-slate-700 focus:outline-none focus:ring-0 focus:border-slate-200 rounded-md"
+                            className="w-full min-w-[84px] rounded-md border border-transparent bg-transparent px-1 py-0.5 font-mono text-xs text-slate-700 hover:border-slate-200 focus:border-slate-300 focus:bg-white focus:outline-none focus:ring-0"
                           />
                         ) : <span className="text-slate-300">—</span>}
                       </td>
-                      <td className="min-w-[260px] border-r border-slate-200/70 px-3 py-2.5 text-xs text-slate-800 font-medium align-middle">
+                      <td className="min-w-[230px] border-r border-slate-200 px-3 py-2 text-xs text-slate-800 font-medium align-middle">
                         {editablePdfRow ? (
                           <input
                             type="text"
                             value={editablePdfRow.className}
                             onChange={e => handleCellEdit(editablePdfRow, 'className', e.target.value)}
-                            className="min-w-[240px] border border-transparent bg-transparent px-1 py-0.5 text-xs text-slate-800 focus:outline-none focus:ring-0 focus:border-slate-200 rounded-md"
+                            className="w-full min-w-[210px] rounded-md border border-transparent bg-transparent px-1 py-0.5 text-xs text-slate-800 hover:border-slate-200 focus:border-slate-300 focus:bg-white focus:outline-none focus:ring-0"
                           />
                         ) : <span className="text-slate-300">—</span>}
                       </td>
-                      <td className="min-w-[240px] border-r border-slate-200/70 px-3 py-2.5 text-xs text-slate-700 align-middle">
+                      <td className="min-w-[220px] border-r border-slate-200 px-3 py-2 text-xs text-slate-700 align-middle">
                         {editablePdfRow ? (
                           <input
                             type="text"
                             value={editablePdfRow.trainer}
                             onChange={e => handleCellEdit(editablePdfRow, 'trainer', e.target.value)}
-                            className="min-w-[220px] border border-transparent bg-transparent px-1 py-0.5 text-xs text-slate-700 focus:outline-none focus:ring-0 focus:border-slate-200 rounded-md"
+                            className="w-full min-w-[200px] rounded-md border border-transparent bg-transparent px-1 py-0.5 text-xs text-slate-700 hover:border-slate-200 focus:border-slate-300 focus:bg-white focus:outline-none focus:ring-0"
                           />
                         ) : <span className="text-slate-300">—</span>}
                       </td>
-                      <td className="min-w-[180px] border-r border-slate-200/70 px-3 py-2.5 text-xs text-slate-700 align-middle">
+                      <td className="min-w-[170px] border-r border-slate-200 px-3 py-2 text-xs text-slate-700 align-middle">
                         {editablePdfRow ? (
                           <input
                             type="text"
                             value={editablePdfRow.theme || ''}
                             onChange={e => handleCellEdit(editablePdfRow, 'theme', e.target.value)}
-                            className="min-w-[160px] border border-transparent bg-transparent px-1 py-0.5 text-xs text-slate-700 focus:outline-none focus:ring-0 focus:border-slate-200 rounded-md"
+                            className="w-full min-w-[150px] rounded-md border border-transparent bg-transparent px-1 py-0.5 text-xs text-slate-700 hover:border-slate-200 focus:border-slate-300 focus:bg-white focus:outline-none focus:ring-0"
                           />
                         ) : <span className="text-slate-300">—</span>}
                       </td>

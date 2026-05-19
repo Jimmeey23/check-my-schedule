@@ -72,15 +72,15 @@ function StatsBar({ schedule, filtered }: { schedule: WeekSchedule; filtered: { 
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
       {stats.map(s => (
-        <div key={s.label} className="flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/80 p-3 shadow-sm transition-all hover:shadow-md">
-          <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
-            <s.icon className="w-4 h-4 text-primary icon-tilt" />
+        <div key={s.label} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-slate-100">
+            <s.icon className="h-4 w-4 text-slate-600" />
           </div>
           <div>
-            <p className="text-xl font-bold font-display text-foreground">{s.value}</p>
-            <p className="text-xs text-muted-foreground">{s.label}{s.sub ? ` ${s.sub}` : ''}</p>
+            <p className="text-lg font-semibold text-slate-950">{s.value}</p>
+            <p className="text-xs text-slate-500">{s.label}{s.sub ? ` ${s.sub}` : ''}</p>
           </div>
         </div>
       ))}
@@ -132,25 +132,25 @@ function FilterBar({ schedule, filters, setFilters, locationFilter = 'all' }: {
             placeholder="Search classes, trainers..."
             value={filters.searchQuery}
             onChange={e => setFilters({ ...filters, searchQuery: e.target.value })}
-            className="pl-9 h-10 rounded-2xl border-slate-200 bg-white shadow-sm"
+            className="h-9 rounded-lg border-slate-200 bg-white pl-9 text-xs shadow-sm"
           />
         </div>
         <Select value={filters.day || 'all'} onValueChange={v => setFilters({ ...filters, day: v === 'all' ? null : v })}>
-          <SelectTrigger className="w-[140px] h-10 rounded-2xl bg-white border-slate-200 shadow-sm"><SelectValue placeholder="Day" /></SelectTrigger>
+          <SelectTrigger className="h-9 w-[140px] rounded-lg border-slate-200 bg-white text-xs shadow-sm"><SelectValue placeholder="Day" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Days</SelectItem>
             {DAYS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={filters.className || 'all'} onValueChange={v => setFilters({ ...filters, className: v === 'all' ? null : v })}>
-          <SelectTrigger className="w-[180px] h-10 rounded-2xl bg-white border-slate-200 shadow-sm"><SelectValue placeholder="Class" /></SelectTrigger>
+          <SelectTrigger className="h-9 w-[180px] rounded-lg border-slate-200 bg-white text-xs shadow-sm"><SelectValue placeholder="Class" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Classes</SelectItem>
             {allClasses.map(c => <SelectItem key={c} value={c}>{c.replace('Studio ', '')}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={filters.trainer || 'all'} onValueChange={v => setFilters({ ...filters, trainer: v === 'all' ? null : v })}>
-          <SelectTrigger className="w-[160px] h-10 rounded-2xl bg-white border-slate-200 shadow-sm"><SelectValue placeholder="Trainer" /></SelectTrigger>
+          <SelectTrigger className="h-9 w-[160px] rounded-lg border-slate-200 bg-white text-xs shadow-sm"><SelectValue placeholder="Trainer" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Trainers</SelectItem>
             {allTrainers.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
@@ -158,7 +158,7 @@ function FilterBar({ schedule, filters, setFilters, locationFilter = 'all' }: {
         </Select>
         {allLocations.length > 1 && (
           <Select value={filters.location || 'all'} onValueChange={v => setFilters({ ...filters, location: v === 'all' ? null : v })}>
-            <SelectTrigger className="w-[180px] h-10 rounded-2xl bg-white border-slate-200 shadow-sm" disabled={locationFilter !== 'all'}><SelectValue placeholder="Location" /></SelectTrigger>
+            <SelectTrigger className="h-9 w-[180px] rounded-lg border-slate-200 bg-white text-xs shadow-sm" disabled={locationFilter !== 'all'}><SelectValue placeholder="Location" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Locations</SelectItem>
               {allLocations.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
@@ -166,7 +166,7 @@ function FilterBar({ schedule, filters, setFilters, locationFilter = 'all' }: {
           </Select>
         )}
         <Select value={filters.level || 'all'} onValueChange={v => setFilters({ ...filters, level: v === 'all' ? null : v as ClassLevel })}>
-          <SelectTrigger className="w-[130px] h-10 rounded-2xl bg-white border-slate-200 shadow-sm"><SelectValue placeholder="Level" /></SelectTrigger>
+          <SelectTrigger className="h-9 w-[130px] rounded-lg border-slate-200 bg-white text-xs shadow-sm"><SelectValue placeholder="Level" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Levels</SelectItem>
             <SelectItem value="beginner">Beginner</SelectItem>
@@ -190,17 +190,17 @@ function ClassCard({ cls, showDay, day }: { cls: ScheduleClass; showDay?: boolea
   const normalized = normalizeClassName(cls.className);
   const level = getClassLevel(normalized);
   return (
-    <div className="group rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/70 p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
+    <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
       <div className="flex items-start justify-between gap-2 mb-1.5">
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700 whitespace-nowrap">
+          <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700 whitespace-nowrap">
             <Clock className="h-3.5 w-3.5 text-slate-500" />
             {cls.time}
           </span>
-          {showDay && day && <span className="inline-flex rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-500">{day.slice(0, 3)}</span>}
+          {showDay && day && <span className="inline-flex rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-500">{day.slice(0, 3)}</span>}
         </div>
         {level && (
-          <span className={cn("inline-flex rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap",
+          <span className={cn("inline-flex rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap",
             level === 'beginner' && "border-level-beginner/30 text-level-beginner bg-level-beginner/10",
             level === 'intermediate' && "border-level-intermediate/30 text-level-intermediate bg-level-intermediate/10",
             level === 'advanced' && "border-level-advanced/30 text-level-advanced bg-level-advanced/10"
@@ -230,7 +230,7 @@ function DayCardsView({ schedule, filtered }: { schedule: WeekSchedule; filtered
   return (
     <div className="space-y-4">
       {byDay.map(({ day, classes }) => (
-        <div key={day} className="overflow-hidden rounded-[24px] border border-slate-200/80 bg-white shadow-sm">
+        <div key={day} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <button
             type="button"
             onClick={() => setCollapsedGroups(current => {
@@ -238,17 +238,17 @@ function DayCardsView({ schedule, filtered }: { schedule: WeekSchedule; filtered
               if (next.has(day)) next.delete(day); else next.add(day);
               return next;
             })}
-            className="w-full bg-gradient-to-r from-slate-950 via-slate-900 to-slate-800 px-4 py-3 text-white flex items-center justify-between"
+            className="flex w-full items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3 text-slate-900"
           >
-            <h4 className="font-display font-semibold">{day}</h4>
-            <div className="flex items-center gap-3 text-xs text-slate-200">
+            <h4 className="font-semibold">{day}</h4>
+            <div className="flex items-center gap-3 text-xs text-slate-500">
               <span>{classes.length} classes</span>
               <span>{new Set(classes.map(cls => normalizeTrainer(cls.trainer))).size} trainers</span>
               {collapsedGroups.has(day) ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
             </div>
           </button>
           {!collapsedGroups.has(day) && (
-            <div className="bg-slate-50/60 p-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-2 bg-slate-50/60 p-3 sm:grid-cols-2 lg:grid-cols-3">
               {classes.map(cls => <ClassCard key={cls.id} cls={cls} />)}
             </div>
           )}
@@ -277,7 +277,7 @@ function GridView({ filtered }: { filtered: { day: string; cls: ScheduleClass }[
   const activeDays = useMemo(() => DAYS.filter(d => filtered.some(f => f.day === d)), [filtered]);
 
   return (
-    <div className="overflow-x-auto rounded-[24px] border border-slate-200/80 bg-white shadow-sm">
+    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
       <table className="table-premium table-auto w-full text-sm">
         <thead>
           <tr className="border-b border-slate-200 bg-slate-50">
@@ -300,7 +300,7 @@ function GridView({ filtered }: { filtered: { day: string; cls: ScheduleClass }[
                     {classes.map(cls => {
                       const level = getClassLevel(normalizeClassName(cls.className));
                       return (
-                        <div key={cls.id} className={cn("mb-1.5 rounded-xl border p-2 text-xs shadow-sm",
+                        <div key={cls.id} className={cn("mb-1.5 rounded-lg border p-2 text-xs",
                           level === 'beginner' && "border-level-beginner/20 bg-level-beginner/10",
                           level === 'intermediate' && "border-level-intermediate/20 bg-level-intermediate/10",
                           level === 'advanced' && "border-level-advanced/20 bg-level-advanced/10",
@@ -354,7 +354,7 @@ function ListView({ filtered, groupBy }: { filtered: { day: string; cls: Schedul
   }, [filtered, groupBy]);
 
   return (
-    <div className="overflow-x-auto rounded-[24px] border border-slate-200/80 bg-white shadow-sm">
+    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
       <table className="table-premium table-auto w-full text-sm">
         <thead>
           <tr className="border-b border-slate-200 bg-slate-50 text-left text-[11px] uppercase tracking-[0.16em]">
@@ -374,7 +374,7 @@ function ListView({ filtered, groupBy }: { filtered: { day: string; cls: Schedul
             const isCollapsed = collapsedGroups.has(label);
 
             return [
-              <tr key={`${label}-group`} className="border-b border-slate-200 bg-gradient-to-r from-slate-100 to-slate-50">
+              <tr key={`${label}-group`} className="border-b border-slate-200 bg-slate-100">
                 <td colSpan={7} className="px-4 py-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <button
@@ -450,7 +450,7 @@ function TrainerView({ filtered }: { filtered: { day: string; cls: ScheduleClass
   return (
     <div className="space-y-4">
       {byTrainer.map(([trainer, items]) => (
-        <div key={trainer} className="overflow-hidden rounded-[24px] border border-slate-200/80 bg-white shadow-sm">
+        <div key={trainer} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <button
             type="button"
             onClick={() => setCollapsedGroups(current => {
@@ -458,11 +458,11 @@ function TrainerView({ filtered }: { filtered: { day: string; cls: ScheduleClass
               if (next.has(trainer)) next.delete(trainer); else next.add(trainer);
               return next;
             })}
-            className="w-full bg-gradient-to-r from-white to-slate-50 px-4 py-3 flex items-center justify-between border-b border-slate-200"
+            className="flex w-full items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3"
           >
             <div className="flex items-center gap-2 text-left">
-              <User className="w-4 h-4 text-primary" />
-              <h4 className="font-display font-semibold text-foreground">{trainer}</h4>
+              <User className="h-4 w-4 text-slate-500" />
+              <h4 className="font-semibold text-slate-900">{trainer}</h4>
             </div>
             <div className="flex items-center gap-2 text-xs text-slate-500">
               <span>{items.length} classes</span>
@@ -471,7 +471,7 @@ function TrainerView({ filtered }: { filtered: { day: string; cls: ScheduleClass
             </div>
           </button>
           {!collapsedGroups.has(trainer) && (
-            <div className="bg-slate-50/50 p-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-2 bg-slate-50/50 p-3 sm:grid-cols-2 lg:grid-cols-3">
               {items.map(({ day, cls }) => <ClassCard key={cls.id} cls={cls} showDay day={day} />)}
             </div>
           )}
@@ -497,7 +497,7 @@ function LocationView({ filtered }: { filtered: { day: string; cls: ScheduleClas
   return (
     <div className="space-y-4">
       {byLocation.map(([location, items]) => (
-        <div key={location} className="overflow-hidden rounded-[24px] border border-slate-200/80 bg-white shadow-sm">
+        <div key={location} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <button
             type="button"
             onClick={() => setCollapsedGroups(current => {
@@ -505,11 +505,11 @@ function LocationView({ filtered }: { filtered: { day: string; cls: ScheduleClas
               if (next.has(location)) next.delete(location); else next.add(location);
               return next;
             })}
-            className="w-full bg-gradient-to-r from-white to-slate-50 px-4 py-3 flex items-center justify-between border-b border-slate-200"
+            className="flex w-full items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3"
           >
             <div className="flex items-center gap-2 text-left">
-              <Building2 className="w-4 h-4 text-primary" />
-              <h4 className="font-display font-semibold text-foreground">{location}</h4>
+              <Building2 className="h-4 w-4 text-slate-500" />
+              <h4 className="font-semibold text-slate-900">{location}</h4>
             </div>
             <div className="flex items-center gap-2 text-xs text-slate-500">
               <span>{items.length} classes</span>
@@ -518,7 +518,7 @@ function LocationView({ filtered }: { filtered: { day: string; cls: ScheduleClas
             </div>
           </button>
           {!collapsedGroups.has(location) && (
-            <div className="bg-slate-50/50 p-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-2 bg-slate-50/50 p-3 sm:grid-cols-2 lg:grid-cols-3">
               {items.map(({ day, cls }) => <ClassCard key={cls.id} cls={cls} showDay day={day} />)}
             </div>
           )}
@@ -558,16 +558,16 @@ export function ScheduleViewer({ schedule, title, locationFilter = 'all', defaul
       <FilterBar schedule={schedule} filters={filters} setFilters={setFilters} locationFilter={locationFilter} />
 
       {/* View Mode Selector */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/80 p-2 shadow-sm">
-        <div className="flex gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm w-fit">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
+        <div className="flex w-fit gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
           {viewModes.map(mode => (
             <button
               key={mode.id}
               onClick={() => setViewMode(mode.id)}
               className={cn(
-                "flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-all",
+                "flex items-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium transition-colors",
                 viewMode === mode.id
-                  ? "bg-slate-900 text-white shadow-sm"
+                  ? "bg-slate-900 text-white"
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
@@ -579,7 +579,7 @@ export function ScheduleViewer({ schedule, title, locationFilter = 'all', defaul
 
         {viewMode === 'list' && (
           <Select value={listGrouping} onValueChange={value => setListGrouping(value as ListGrouping)}>
-            <SelectTrigger className="w-[190px] h-10 rounded-2xl bg-white border-slate-200 shadow-sm text-xs">
+            <SelectTrigger className="h-9 w-[190px] rounded-lg border-slate-200 bg-white text-xs shadow-sm">
               <SelectValue placeholder="List grouping" />
             </SelectTrigger>
             <SelectContent>

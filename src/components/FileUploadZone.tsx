@@ -95,9 +95,9 @@ export function FileUploadZone({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {pendingFiles.length > 0 && (
-        <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 shadow-sm">
+        <div className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
           {pendingFiles.length === 1 ? 'Processing 1 file…' : `Processing ${pendingFiles.length} files…`}
         </div>
@@ -109,11 +109,11 @@ export function FileUploadZone({
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         className={cn(
-          "relative rounded-2xl border-2 border-dashed p-12 transition-all duration-200",
-          "bg-white/70 backdrop-blur-sm",
+          "relative rounded-xl border border-dashed p-8 transition-colors duration-150",
+          "bg-white",
           isDragging 
-            ? "border-[#0353A4] bg-white scale-[1.01] shadow-elevated"
-            : "border-slate-200 hover:border-[#0353A4]/40 shadow-soft"
+            ? "border-slate-500 bg-slate-50"
+            : "border-slate-300 hover:border-slate-500"
         )}
       >
         <input
@@ -126,31 +126,31 @@ export function FileUploadZone({
         
         <div className="flex flex-col items-center text-center">
           <div className={cn(
-            "w-16 h-16 rounded-xl flex items-center justify-center mb-5 transition-all duration-200",
+            "mb-4 flex h-12 w-12 items-center justify-center rounded-lg transition-colors duration-150",
             isDragging 
-              ? "gradient-primary text-white shadow-elevated animate-gradient-shift" 
-              : "gradient-primary text-white shadow-card"
+              ? "bg-slate-900 text-white"
+              : "bg-slate-100 text-slate-700"
           )}>
-            <Upload className="w-7 h-7 icon-tilt" />
+            <Upload className="h-5 w-5" />
           </div>
           
-          <h3 className="text-xl font-display font-semibold mb-2 text-slate-900">
+          <h3 className="mb-1 text-base font-semibold text-slate-900">
             {isDragging ? "Drop your files here" : "Drag & Drop your schedule files"}
           </h3>
-          <p className="text-slate-600 max-w-md mb-5">
+          <p className="mb-4 max-w-md text-sm leading-6 text-slate-500">
             Upload PDF schedules or CSV files to compare and verify your class data.
             We'll extract and normalize all information automatically.
           </p>
           
           <div className="flex gap-3">
             {acceptedTypes.includes('pdf') && (
-              <Button variant="outline" className="pointer-events-none gap-2 text-slate-700">
+              <Button variant="outline" size="sm" className="pointer-events-none gap-2 text-slate-700">
                 <FileText className="w-4 h-4" />
                 PDF
               </Button>
             )}
             {acceptedTypes.includes('csv') && (
-              <Button variant="outline" className="pointer-events-none gap-2 text-slate-700">
+              <Button variant="outline" size="sm" className="pointer-events-none gap-2 text-slate-700">
                 <FileSpreadsheet className="w-4 h-4" />
                 CSV
               </Button>
@@ -161,22 +161,22 @@ export function FileUploadZone({
 
       {/* Uploaded Files */}
       {uploadedFiles.length > 0 && (
-        <div className="space-y-3">
-          <h4 className="text-sm font-medium text-slate-600 flex items-center gap-2">
+        <div className="space-y-2">
+          <h4 className="flex items-center gap-2 text-xs font-semibold text-slate-600">
             <FileSpreadsheet className="w-4 h-4" />
             Uploaded Files ({uploadedFiles.length})
           </h4>
-          <div className="grid gap-3">
+          <div className="grid gap-2">
             {uploadedFiles.map((file) => (
               <div 
                 key={file.id}
                 className={cn(
-                  "flex items-center gap-4 p-4 rounded-xl border bg-white transition-all shadow-sm",
-                  file.status === 'error' ? "border-red-200 bg-red-50" : "border-slate-200 hover:border-blue-300 hover:shadow-md"
+                  "flex items-center gap-3 rounded-lg border bg-white p-3 transition-colors",
+                  file.status === 'error' ? "border-red-200 bg-red-50" : "border-slate-200 hover:border-slate-300"
                 )}
               >
                 <div className={cn(
-                  "w-10 h-10 rounded-lg flex items-center justify-center",
+                  "flex h-9 w-9 items-center justify-center rounded-md",
                   file.type === 'pdf' ? "bg-red-100 text-red-600" : "bg-emerald-100 text-emerald-600"
                 )}>
                   {getFileIcon(file.type)}
@@ -184,15 +184,15 @@ export function FileUploadZone({
                 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <p className="font-medium truncate text-slate-900">{file.name}</p>
+                    <p className="truncate text-sm font-medium text-slate-900">{file.name}</p>
                     <span className={cn(
-                      "text-xs px-2 py-0.5 rounded-full font-medium uppercase",
+                      "rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase",
                       file.type === 'pdf' ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"
                     )}>
                       {file.type}
                     </span>
                   </div>
-                  <p className="text-sm text-slate-500">
+                  <p className="text-xs text-slate-500">
                     {file.status === 'uploading' && 'Uploading...'}
                     {file.status === 'processing' && 'Processing file...'}
                     {file.status === 'completed' && 'Ready for comparison'}

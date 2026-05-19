@@ -1,55 +1,52 @@
-/* Glassmorphism Design System - Modern Premium UI */
+/* Minimal operations UI system */
 
 /*
   NOTE: This file is imported after `index.css`.
-  Keep it as the canonical source for premium surface utilities.
+  Keep it as the canonical source for shared surface utilities.
 */
 
-/* Glass Effects */
+/* Surface Effects */
 .glass {
-  background: rgba(255, 255, 255, 0.86);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 .glass-hover:hover {
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(16px);
-  border-color: rgba(0, 0, 0, 0.12);
-  transform: translateY(-2px);
-  box-shadow: 0 16px 46px rgba(15, 23, 42, 0.10);
+  border-color: rgba(15, 23, 42, 0.16);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
 .glass-card {
-  background: rgba(255, 255, 255, 0.90);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   border: 1px solid rgba(15, 23, 42, 0.10);
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
-  border-radius: 16px;
-  padding: 24px;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  border-radius: 12px;
+  padding: 20px;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
 }
 
 .glass-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 16px 46px rgba(15, 23, 42, 0.10);
+  border-color: rgba(15, 23, 42, 0.16);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
-/* Gradient Utilities */
+/* Color Utilities */
 .gradient-primary {
-  background: linear-gradient(135deg, #0A1128 0%, #001F54 50%, #0353A4 100%);
+  background: #0f172a;
 }
 
 .gradient-secondary {
-  background: linear-gradient(135deg, #1A1A2E 0%, #16213E 100%);
+  background: #1e293b;
 }
 
-/* Extra-dark header gradient (for table headers) */
+/* Dark header fill (for table headers) */
 .gradient-header-dark {
-  background: linear-gradient(135deg, #050A1A 0%, #071432 45%, #0B2B5B 100%);
+  background: #0f172a;
 }
 
 .gradient-border-top {
@@ -57,91 +54,88 @@
 }
 
 .gradient-border-top::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: linear-gradient(90deg, #0A1128, #001F54, #0353A4);
-  border-radius: 16px 16px 0 0;
+  content: none;
 }
 
 /* Button Styles */
 .btn-primary-glass {
-  background: linear-gradient(135deg, #0A1128 0%, #001F54 50%, #0353A4 100%);
+  background: #0f172a;
   color: white;
   font-weight: 600;
-  padding: 12px 24px;
-  border-radius: 12px;
+  padding: 10px 18px;
+  border-radius: 10px;
   border: none;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 10px 22px rgba(3, 83, 164, 0.22);
+  transition: background-color 0.16s ease, box-shadow 0.16s ease;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
 }
 
 .btn-primary-glass:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 16px 34px rgba(3, 83, 164, 0.28);
+  background: #1e293b;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
 }
 
 .btn-primary-glass:active {
-  transform: scale(0.98);
+  background: #0f172a;
 }
 
 .btn-secondary-glass {
-  background: rgba(255, 255, 255, 0.88);
-  border: 1.5px solid rgba(15, 23, 42, 0.14);
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.14);
   color: #0F172A;
-  backdrop-filter: blur(8px);
-  padding: 12px 24px;
-  border-radius: 12px;
+  padding: 10px 18px;
+  border-radius: 10px;
   font-weight: 600;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: border-color 0.16s ease, background-color 0.16s ease;
 }
 
 .btn-secondary-glass:hover {
-  border-color: rgba(3, 83, 164, 0.35);
-  background: rgba(255, 255, 255, 0.8);
+  border-color: rgba(15, 23, 42, 0.24);
+  background: #f8fafc;
 }
 
-/* Premium layout helpers */
+/* Layout helpers */
 .surface-card {
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.98);
   border: 1px solid rgba(15, 23, 42, 0.10);
-  border-radius: 16px;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 .surface-card.hoverable {
-  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+  transition: box-shadow 0.16s ease, border-color 0.16s ease;
 }
 
 .surface-card.hoverable:hover {
-  transform: translateY(-2px);
-  border-color: rgba(3, 83, 164, 0.18);
-  box-shadow: 0 16px 46px rgba(15, 23, 42, 0.10);
+  border-color: rgba(15, 23, 42, 0.16);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
 .surface-muted {
-  background: linear-gradient(180deg, rgba(248, 250, 252, 0.85) 0%, rgba(241, 245, 249, 0.65) 100%);
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 14px;
+  background: #f8fafc;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  border-radius: 10px;
 }
 
 .section-heading {
   letter-spacing: -0.02em;
 }
 
-/* Premium table helpers */
+/* Table helpers */
 .table-premium {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
+  background: #fff;
 }
 
 .table-premium thead th {
-  background: rgba(248, 250, 252, 0.85);
-  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  background: #f8fafc;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.10);
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 /* When the header row itself carries a gradient/background, don't override it per-cell */
@@ -205,7 +199,7 @@
 }
 
 .table-premium tbody tr:hover {
-  background: rgba(3, 83, 164, 0.04);
+  background: #f8fafc;
 }
 
 /* Table with better width handling for long content */
@@ -233,8 +227,8 @@
 }
 
 .input-glass:focus {
-  border-color: #0353A4;
-  box-shadow: 0 0 0 4px rgba(3, 83, 164, 0.1);
+  border-color: #475569;
+  box-shadow: 0 0 0 3px rgba(71, 85, 105, 0.12);
   outline: none;
 }
 

@@ -545,39 +545,38 @@ const Index = () => {
     <div className="min-h-screen app-shell">
       <Header />
 
-      <main className="container mx-auto px-4 sm:px-6 py-8 max-w-7xl">
-        {/* Hero */}
-        <section className="text-center mb-10">
-          <h1 className="text-4xl md:text-5xl font-display font-bold mb-3 gradient-text">
+      <main className="container mx-auto max-w-7xl px-4 py-6 sm:px-5">
+        <section className="mb-5">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-950 md:text-3xl">
             Check My Schedule
           </h1>
-          <p className="text-base text-slate-600 max-w-2xl mx-auto leading-relaxed">
-            Upload PDF and CSV schedules to compare and verify class data across locations with ease.
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
+            Compare uploaded schedules and review row-level differences by location.
           </p>
         </section>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <TabsList className="surface-muted p-1.5 h-auto flex-wrap rounded-xl shadow-soft">
-              <TabsTrigger value="upload" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <TabsList className="h-auto flex-wrap rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
+              <TabsTrigger value="upload" className="gap-2 rounded-md text-xs data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-none">
                 <Upload className="w-4 h-4" /> Upload
               </TabsTrigger>
-              <TabsTrigger value="csv" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all" disabled={!hasCsv}>
+              <TabsTrigger value="csv" className="gap-2 rounded-md text-xs data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-none" disabled={!hasCsv}>
                 <FileSpreadsheet className="w-4 h-4" /> CSV
                 {hasCsv && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
               </TabsTrigger>
-              <TabsTrigger value="pdf" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all" disabled={!hasPdf}>
+              <TabsTrigger value="pdf" className="gap-2 rounded-md text-xs data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-none" disabled={!hasPdf}>
                 <FileText className="w-4 h-4" /> PDF
                 {hasPdf && <Badge variant="secondary" className="text-xs h-5 px-1.5 bg-red-100 text-red-700 border-red-200">{pdfSchedules.size}</Badge>}
               </TabsTrigger>
-              <TabsTrigger value="pdf-files" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all" disabled={!hasPdf}>
+              <TabsTrigger value="pdf-files" className="gap-2 rounded-md text-xs data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-none" disabled={!hasPdf}>
                 <Eye className="w-4 h-4" /> Editor
                 {hasPdf && <Badge variant="secondary" className="text-xs h-5 px-1.5 bg-red-100 text-red-700 border-red-200">{pdfSchedules.size}</Badge>}
               </TabsTrigger>
-              <TabsTrigger value="side-by-side" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all">
+              <TabsTrigger value="side-by-side" className="gap-2 rounded-md text-xs data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-none">
                 <GitCompare className="w-4 h-4" /> Compare
               </TabsTrigger>
-              <TabsTrigger value="momence" className="gap-2 text-sm data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm rounded-lg transition-all">
+              <TabsTrigger value="momence" className="gap-2 rounded-md text-xs data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-none">
                 <Globe className="w-4 h-4" /> Momence
               </TabsTrigger>
             </TabsList>
@@ -587,7 +586,7 @@ const Index = () => {
                 variant="outline"
                 size="sm"
                 onClick={handleClearAll}
-                className="gap-2 text-red-600 hover:text-red-700 border-red-200 hover:bg-red-50"
+                className="gap-2 border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-red-700"
               >
                 <Trash2 className="w-4 h-4" /> Clear All
               </Button>
@@ -595,16 +594,18 @@ const Index = () => {
           </div>
 
           {allAvailableLocations.length > 0 && (
-            <div className="flex flex-wrap items-center gap-3 p-4 surface-card">
-              <Building2 className="w-5 h-5 text-blue-600" />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-slate-700">Global location filter</p>
-                <p className="text-xs text-slate-500">
-                  Synced with the URL via <code className="font-mono">?location=...</code> so every tab stays in step.
-                </p>
+            <div className="surface-card grid gap-3 p-3 sm:flex sm:items-center">
+              <div className="flex min-w-0 items-start gap-3 sm:flex-1">
+                <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-slate-700">Global location filter</p>
+                  <p className="text-[11px] text-slate-500">
+                    Synced with the URL via <code className="font-mono">?location=...</code> so every tab stays in step.
+                  </p>
+                </div>
               </div>
               <Select value={sharedLocationFilter} onValueChange={handleSharedLocationChange}>
-                <SelectTrigger className="w-[240px] h-10 border-blue-200 focus:border-blue-500">
+                <SelectTrigger className="h-9 w-full border-slate-200 text-xs focus:border-slate-400 sm:w-[240px]">
                   <SelectValue placeholder="All Locations" />
                 </SelectTrigger>
                 <SelectContent>
@@ -619,17 +620,17 @@ const Index = () => {
 
           {/* Status Bar */}
           {(hasPdf || hasCsv) && (
-            <div className="flex flex-wrap gap-3 items-center p-4 surface-card">
-              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium ${hasPdf ? 'bg-white text-emerald-700 border border-emerald-200' : 'bg-white/50 text-slate-500 border border-slate-200'}`}>
+            <div className="surface-card flex flex-wrap items-center gap-2 p-3">
+              <div className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs font-medium ${hasPdf ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-500'}`}>
                 {hasPdf ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
                 PDF: {hasPdf ? `${pdfSchedules.size} file(s)` : 'Not uploaded'}
               </div>
-              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium ${hasCsv ? 'bg-white text-emerald-700 border border-emerald-200' : 'bg-white/50 text-slate-500 border border-slate-200'}`}>
+              <div className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs font-medium ${hasCsv ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-500'}`}>
                 {hasCsv ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
                 CSV: {hasCsv ? 'Ready' : 'Not uploaded'}
               </div>
               {canCompare && (
-                <Button size="sm" onClick={() => setActiveTab('side-by-side')} className="gap-2 ml-auto">
+                <Button size="sm" onClick={() => setActiveTab('side-by-side')} className="ml-auto h-8 gap-2 text-xs">
                   <GitCompare className="w-4 h-4" /> Open Compare
                 </Button>
               )}
@@ -637,13 +638,13 @@ const Index = () => {
           )}
 
           <TabsContent value="upload" className="animate-fade-in">
-            <div className="surface-card gradient-border-top p-8">
+            <div className="surface-card p-5">
               <FileUploadZone onUpload={handleUpload} uploadedFiles={uploadedFiles} onRemoveFile={handleRemoveFile} />
             </div>
           </TabsContent>
 
           <TabsContent value="csv" className="animate-fade-in">
-            <div className="surface-card gradient-border-top p-8">
+            <div className="surface-card p-5">
               {csvSchedule ? (
                 <ScheduleViewer
                   schedule={csvSchedule}
@@ -659,7 +660,7 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="pdf" className="animate-fade-in">
-            <div className="surface-card gradient-border-top p-8">
+            <div className="surface-card p-5">
               {hasPdf ? (
                 <div className="space-y-6">
                   {viewPdfSchedule && (
@@ -684,7 +685,7 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="pdf-files" className="animate-fade-in">
-            <div className="surface-card gradient-border-top p-6">
+            <div className="surface-card p-4">
               <PdfSourceEditorTab
                 pdfFiles={uploadedFiles}
                 previewUrls={pdfPreviewUrls}
@@ -694,7 +695,7 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="side-by-side" className="animate-fade-in">
-            <div className="surface-card gradient-border-top p-4">
+            <div className="surface-card p-3">
               {csvClassData && aggregatedPdfClassData ? (
                 <SideBySideViewer
                   csvData={csvClassData}
@@ -709,7 +710,7 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="momence" className="animate-fade-in">
-            <div className="surface-card gradient-border-top p-4">
+            <div className="surface-card p-3">
               <MomenceTab
                 startDate={viewPdfSchedule?.weekStart}
                 endDate={viewPdfSchedule?.weekEnd}

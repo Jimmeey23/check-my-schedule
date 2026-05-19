@@ -694,6 +694,82 @@ describe('CSV/PDF alignment', () => {
     expect(screen.getByDisplayValue('Kemps raw row')).toBeInTheDocument();
     expect(screen.queryByDisplayValue('Bandra raw row')).not.toBeInTheDocument();
   });
+
+  it('sorts side-by-side table rows when a column header is clicked', () => {
+    const csvData: Record<string, ClassData[]> = {
+      Monday: [
+        {
+          day: 'Monday',
+          timeRaw: '10:00 AM',
+          timeDate: null,
+          time: '10:00',
+          location: 'Kemps',
+          className: 'Studio PowerCycle',
+          trainer1: 'Anmol Sharma',
+          cover: '',
+          notes: '',
+          uniqueKey: 'csv-powercycle',
+        },
+        {
+          day: 'Monday',
+          timeRaw: '7:30 AM',
+          timeDate: null,
+          time: '07:30',
+          location: 'Kemps',
+          className: 'Studio Barre 57',
+          trainer1: 'Bret Saldanha',
+          cover: '',
+          notes: '',
+          uniqueKey: 'csv-barre',
+        },
+      ],
+    };
+    const pdfData: PdfClassData[] = [
+      {
+        day: 'Monday',
+        time: '10:00',
+        className: 'Studio PowerCycle',
+        trainer: 'Bret Saldanha',
+        location: 'Kwality House, Kemps Corner',
+        uniqueKey: 'pdf-powercycle',
+      },
+      {
+        day: 'Monday',
+        time: '07:30',
+        className: 'Studio Barre 57',
+        trainer: 'Anmol Sharma',
+        location: 'Kwality House, Kemps Corner',
+        uniqueKey: 'pdf-barre',
+      },
+    ];
+    const comparison = compareSchedules(
+      normalizeSchedule([{ day: 'Monday', classes: pdfData.map((row, index) => ({ id: `pdf-${index}`, ...row })) }]),
+      normalizeSchedule([
+        {
+          day: 'Monday',
+          classes: csvData.Monday.map(row => ({
+            id: row.uniqueKey,
+            time: row.time,
+            className: row.className,
+            trainer: row.trainer1,
+            location: row.location,
+          })),
+        },
+      ])
+    );
+
+    const { container } = render(React.createElement(SideBySideViewer, { csvData, pdfData, comparison }));
+    const getCsvClasses = () => Array.from(container.querySelectorAll('tbody tr'))
+      .map(row => row.children[4]?.textContent?.trim())
+      .filter(Boolean);
+
+    expect(getCsvClasses()).toEqual(['Studio Barre 57', 'Studio PowerCycle']);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Sort by Class' })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Sort by Class' })[0]);
+
+    expect(getCsvClasses()).toEqual(['Studio PowerCycle', 'Studio Barre 57']);
+  });
 });
 
 describe('PDF visual theme enrichment', () => {

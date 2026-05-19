@@ -251,6 +251,15 @@ function parseClassLine(
   if (!time || (!className && !trainer)) return null;
 
   const directTheme = extractTheme(rest, trainer);
+  const continuationSuppliesRowDetail = Boolean(
+    continuationLine && (
+      (!matchTrainer(rest) && matchTrainer(continuationLine)) ||
+      (!matchClassName(rest) && matchClassName(continuationLine))
+    )
+  );
+  const continuationTheme = !directTheme && continuationSuppliesRowDetail
+    ? extractTheme(combinedRest, trainer)
+    : null;
   const normalizedName = className || rest;
 
   return {
@@ -258,7 +267,7 @@ function parseClassLine(
     className: className || rest,
     trainer: trainer || 'TBD',
     level: getClassLevel(normalizedName),
-    theme: directTheme || undefined,
+    theme: directTheme || continuationTheme || undefined,
   };
 }
 
@@ -1449,16 +1458,19 @@ function dominantColorInRect(sample: RenderedPageSample, rect: PdfTemplateRect):
   return best?.count >= 3 ? best.color : null;
 }
 
-function buildRowHighlightRect(row: PdfTemplateRow): PdfTemplateRect {
-  const merged = mergeRects(row.timeRect, row.classRect, row.trainerRect);
-  if (!merged) return row.classRect;
+function buildRowThemeMarkerRect(row: PdfTemplateRow): PdfTemplateRect | null {
+  const rowRect = mergeRects(row.timeRect, row.classRect, row.trainerRect) || row.classRect;
+  const markerRight = Math.max(row.timeRect.x - 4, 0);
+  const markerX = Math.max(row.timeRect.x - 30, 0);
+  const markerWidth = markerRight - markerX;
+  if (markerWidth < 4) return null;
 
   return {
-    ...merged,
-    x: Math.max(row.timeRect.x - 4, 0),
-    y: Math.max(merged.y - 3, 0),
-    width: Math.max((merged.x + merged.width + 120) - Math.max(row.timeRect.x - 4, 0), merged.width),
-    height: Math.max(merged.height + 6, 12),
+    pageIndex: row.pageIndex,
+    x: markerX,
+    y: Math.max(rowRect.y - 4, 0),
+    width: markerWidth,
+    height: Math.max(rowRect.height + 8, 14),
   };
 }
 
@@ -1536,7 +1548,9 @@ function findThemeByColor(color: RGBColor | null, legendEntries: ThemeLegendEntr
 function findThemeByRowHighlight(sample: RenderedPageSample, row: PdfTemplateRow, legendEntries: ThemeLegendEntry[]): string | null {
   if (legendEntries.length === 0) return null;
 
-  const rowRect = buildRowHighlightRect(row);
+  const rowRect = buildRowThemeMarkerRect(row);
+  if (!rowRect) return null;
+
   const best = legendEntries
     .map(entry => ({
       entry,
@@ -1544,7 +1558,7 @@ function findThemeByRowHighlight(sample: RenderedPageSample, row: PdfTemplateRow
     }))
     .sort((a, b) => b.score - a.score)[0];
 
-  return best && best.score >= 8 ? best.entry.theme : null;
+  return best && best.score >= 3 ? best.entry.theme : null;
 }
 
 function comparableTime(value: string | null | undefined): string {
@@ -1661,10 +1675,7 @@ async function buildColorThemeMap(arrayBuffer: ArrayBuffer, layout: PdfTemplateL
       if (!sample || legendEntries.length === 0) return '';
 
       const stripTheme = findThemeByRowHighlight(sample, row, legendEntries);
-      if (stripTheme) return stripTheme;
-
-      const color = dominantColorInRect(sample, row.classRect);
-      return findThemeByColor(color, legendEntries) || '';
+      return stripTheme || '';
     });
   }
 
@@ -1811,5 +1822,6 @@ export const __pdfParserTestUtils = {
   mergeThemeParts,
   detectThemeLegendEntries,
   countMatchingPixels,
+  findThemeByRowHighlight,
   applyRecoveredThemesToDayClasses,
 };

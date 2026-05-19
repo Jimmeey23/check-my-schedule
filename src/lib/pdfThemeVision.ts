@@ -20,6 +20,10 @@ export interface PdfThemeVisionMatch {
   confidence: number;
 }
 
+export interface PdfThemeVisionTargetRow extends PdfClassData {
+  themeCandidates?: string[];
+}
+
 const MIN_THEME_CONFIDENCE = 0.75;
 const DAY_NAME_PATTERN = /\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i;
 type NormalizedThemeCandidate = {
@@ -51,6 +55,17 @@ type PdfThemeVisionMergeOptions = {
   csvData?: { [day: string]: ClassData[] } | null;
   debug?: boolean;
   debugLabel?: string;
+};
+
+type ThemeCandidateIndex = {
+  hasCsvData: boolean;
+  csvRows: ClassData[];
+  themedCsvRows: ClassData[];
+  csvRowKeyCounts: Map<string, number>;
+  csvPartialKeyCounts: Map<string, number>;
+  pdfPartialKeyCounts: Map<string, number>;
+  candidatesByRowKey: Map<string, NormalizedThemeCandidate[]>;
+  candidatesByPartialKey: Map<string, NormalizedThemeCandidate[]>;
 };
 
 function createCanvas(width: number, height: number): HTMLCanvasElement | null {
@@ -147,17 +162,113 @@ function normalizeThemeCandidates(themeCandidates: string[]): NormalizedThemeCan
   return [...candidatesByTheme.values()];
 }
 
-function chooseUnambiguousThemeMatch(matches: CanonicalThemeMatch[] | undefined): CanonicalThemeMatch | null {
+function addThemeCandidate(
+  candidatesByKey: Map<string, NormalizedThemeCandidate[]>,
+  key: string,
+  theme: string | undefined
+) {
+  const label = theme?.trim() || '';
+  const normalized = normalizeThemeName(label);
+  if (!key || !label || !normalized) return;
+
+  const candidates = candidatesByKey.get(key) ?? [];
+  if (candidates.some(candidate => candidate.normalized === normalized)) return;
+
+  candidatesByKey.set(key, [...candidates, { normalized, label }]);
+}
+
+function buildThemeCandidateIndex(
+  pdfData: PdfClassData[],
+  csvData: { [day: string]: ClassData[] } | null | undefined
+): ThemeCandidateIndex {
+  const hasCsvData = csvData !== undefined && csvData !== null;
+  const csvRows = Object.values(csvData ?? {}).flat();
+  const themedCsvRows = csvRows.filter(row => row.theme?.trim());
+  const csvRowKeyCounts = new Map<string, number>();
+  const csvPartialKeyCounts = new Map<string, number>();
+  const pdfPartialKeyCounts = new Map<string, number>();
+  const candidatesByRowKey = new Map<string, NormalizedThemeCandidate[]>();
+  const candidatesByPartialKey = new Map<string, NormalizedThemeCandidate[]>();
+
+  themedCsvRows.forEach(row => {
+    const exactKey = csvScopedRowKey(row);
+    const partialKey = csvScopedPartialRowKey(row);
+
+    incrementCount(csvRowKeyCounts, exactKey);
+    incrementCount(csvPartialKeyCounts, partialKey);
+    addThemeCandidate(candidatesByRowKey, exactKey, row.theme);
+    addThemeCandidate(candidatesByPartialKey, partialKey, row.theme);
+  });
+
+  pdfData.forEach(row => incrementCount(pdfPartialKeyCounts, scopedPartialRowKey(row)));
+
+  return {
+    hasCsvData,
+    csvRows,
+    themedCsvRows,
+    csvRowKeyCounts,
+    csvPartialKeyCounts,
+    pdfPartialKeyCounts,
+    candidatesByRowKey,
+    candidatesByPartialKey,
+  };
+}
+
+function getRowThemeCandidates(row: PdfClassData, index: ThemeCandidateIndex): NormalizedThemeCandidate[] {
+  if (!index.hasCsvData) return [];
+
+  const exactKey = scopedRowKey(row);
+  if ((index.csvRowKeyCounts.get(exactKey) ?? 0) === 1) {
+    return index.candidatesByRowKey.get(exactKey) ?? [];
+  }
+
+  const partialKey = scopedPartialRowKey(row);
+  if ((index.csvPartialKeyCounts.get(partialKey) ?? 0) === 1
+    && (index.pdfPartialKeyCounts.get(partialKey) ?? 0) === 1) {
+    return index.candidatesByPartialKey.get(partialKey) ?? [];
+  }
+
+  return [];
+}
+
+function isThemedCsvTarget(row: PdfClassData, index: ThemeCandidateIndex): boolean {
+  if (!index.hasCsvData) return true;
+
+  return getRowThemeCandidates(row, index).length > 0;
+}
+
+function canonicalizeThemeForRestriction(
+  theme: string | undefined,
+  candidateRestriction: NormalizedThemeCandidate[] | null
+): string | null {
+  if (candidateRestriction === null) return canonicalizeThemeWithCandidates(theme, []);
+  if (candidateRestriction.length === 0) return null;
+
+  return canonicalizeThemeWithCandidates(theme, candidateRestriction);
+}
+
+function chooseUnambiguousThemeMatch(
+  matches: CanonicalThemeMatch[] | undefined,
+  candidateRestriction: NormalizedThemeCandidate[] | null = null
+): CanonicalThemeMatch | null {
   if (!matches || matches.length === 0) return null;
+
+  const claimedThemes = new Set(
+    matches
+      .map(match => normalizeThemeName(match.theme))
+      .filter(Boolean)
+  );
+  if (claimedThemes.size > 1) return null;
 
   const byTheme = new Map<string, CanonicalThemeMatch>();
   for (const match of matches) {
-    const normalizedTheme = normalizeThemeName(match.theme);
+    const theme = canonicalizeThemeForRestriction(match.theme, candidateRestriction);
+    const normalizedTheme = normalizeThemeName(theme || '');
     if (!normalizedTheme) continue;
 
     const current = byTheme.get(normalizedTheme);
     if (!current || match.confidence > current.confidence) {
-      byTheme.set(normalizedTheme, match);
+      byTheme.set(normalizedTheme, { ...match, theme: theme || match.theme });
     }
   }
 
@@ -247,28 +358,18 @@ export function collectThemeCandidates(csvData: { [day: string]: ClassData[] } |
 export function collectThemeVisionTargetRows(
   pdfData: PdfClassData[],
   csvData: { [day: string]: ClassData[] } | null | undefined
-): PdfClassData[] {
+): PdfThemeVisionTargetRow[] {
   if (!csvData) return pdfData;
 
-  const themedCsvRows = Object.values(csvData)
-    .flat()
-    .filter(row => row.theme?.trim());
+  const candidateIndex = buildThemeCandidateIndex(pdfData, csvData);
 
-  if (themedCsvRows.length === 0) return [];
+  if (candidateIndex.themedCsvRows.length === 0) return [];
 
-  const exactThemeKeyCounts = new Map<string, number>();
-  themedCsvRows.forEach(row => incrementCount(exactThemeKeyCounts, csvScopedRowKey(row)));
-  const csvPartialCounts = new Map<string, number>();
-  themedCsvRows.forEach(row => incrementCount(csvPartialCounts, csvScopedPartialRowKey(row)));
+  return pdfData.flatMap(row => {
+    const themeCandidates = getRowThemeCandidates(row, candidateIndex).map(candidate => candidate.label);
+    if (themeCandidates.length === 0) return [];
 
-  const pdfPartialCounts = new Map<string, number>();
-  pdfData.forEach(row => incrementCount(pdfPartialCounts, scopedPartialRowKey(row)));
-
-  return pdfData.filter(row => {
-    if ((exactThemeKeyCounts.get(scopedRowKey(row)) ?? 0) === 1) return true;
-
-    const key = scopedPartialRowKey(row);
-    return (csvPartialCounts.get(key) ?? 0) === 1 && (pdfPartialCounts.get(key) ?? 0) === 1;
+    return [{ ...row, themeCandidates }];
   });
 }
 
@@ -298,25 +399,8 @@ export function mergeVisionThemesIntoPdfData(
 ): PdfClassData[] {
   const minConfidence = options.minConfidence ?? MIN_THEME_CONFIDENCE;
   const normalizedCandidates = normalizeThemeCandidates(options.themeCandidates ?? []);
-  const csvRows = Object.values(options.csvData ?? {}).flat();
-  const themedCsvRows = csvRows.filter(row => row.theme?.trim());
-  const hasCsvData = options.csvData !== undefined && options.csvData !== null;
-  const csvRowKeyCounts = new Map<string, number>();
-  themedCsvRows.forEach(row => incrementCount(csvRowKeyCounts, csvScopedRowKey(row)));
-  const csvPartialKeyCounts = new Map<string, number>();
-  themedCsvRows.forEach(row => incrementCount(csvPartialKeyCounts, csvScopedPartialRowKey(row)));
-
-  const pdfPartialKeyCounts = new Map<string, number>();
-  pdfData.forEach(row => incrementCount(pdfPartialKeyCounts, scopedPartialRowKey(row)));
-
-  const isThemedCsvTarget = (row: PdfClassData) => {
-    if (!hasCsvData) return true;
-    if ((csvRowKeyCounts.get(scopedRowKey(row)) ?? 0) === 1) return true;
-
-    const partialKey = scopedPartialRowKey(row);
-    return (csvPartialKeyCounts.get(partialKey) ?? 0) === 1
-      && (pdfPartialKeyCounts.get(partialKey) ?? 0) === 1;
-  };
+  const candidateIndex = buildThemeCandidateIndex(pdfData, options.csvData);
+  const globalCandidateRestriction = normalizedCandidates.length > 0 ? normalizedCandidates : null;
 
   const exactMatches = new Map<string, CanonicalThemeMatch[]>();
   const partialMatches = new Map<string, CanonicalThemeMatch[]>();
@@ -333,7 +417,7 @@ export function mergeVisionThemesIntoPdfData(
       continue;
     }
 
-    const candidateTheme = canonicalizeThemeWithCandidates(match.theme, normalizedCandidates);
+    const candidateTheme = canonicalizeThemeForRestriction(match.theme, globalCandidateRestriction);
     if (!candidateTheme) {
       rejectedMatches.push({
         match,
@@ -377,17 +461,23 @@ export function mergeVisionThemesIntoPdfData(
       exactKey,
       partialKey: rowPartialKey,
     };
-    const themedCsvTarget = isThemedCsvTarget(row);
+    const rowThemeCandidates = getRowThemeCandidates(row, candidateIndex);
+    const rowCandidateRestriction = candidateIndex.hasCsvData
+      ? rowThemeCandidates
+      : globalCandidateRestriction;
+    const themedCsvTarget = isThemedCsvTarget(row, candidateIndex);
     const hasExistingRawTheme = Boolean(row.theme?.trim());
-    const canVisualOverrideExistingTheme = !hasExistingRawTheme || normalizedCandidates.length > 0 || hasCsvData;
+    const canVisualOverrideExistingTheme = !hasExistingRawTheme || normalizedCandidates.length > 0 || candidateIndex.hasCsvData;
 
     const exactMatchOptions = exactMatches.get(exactKey);
-    const exactMatch = chooseUnambiguousThemeMatch(exactMatchOptions);
+    const exactMatch = chooseUnambiguousThemeMatch(exactMatchOptions, rowCandidateRestriction);
     if (exactMatchOptions?.length && !exactMatch) {
       decisions.push({
         ...decisionBase,
         action: 'rejected',
-        reason: 'exact visual matches existed, but they did not resolve to one unambiguous normalized theme',
+        reason: candidateIndex.hasCsvData
+          ? 'exact visual matches existed, but none resolved to one row-specific CSV theme candidate'
+          : 'exact visual matches existed, but they did not resolve to one unambiguous normalized theme',
         partialMatches: exactMatchOptions.map(describeMatch),
       });
     }
@@ -416,12 +506,12 @@ export function mergeVisionThemesIntoPdfData(
     }
 
     const scopedPartialKey = scopedPartialRowKey(row);
-    const pdfPartialCount = pdfPartialKeyCounts.get(scopedPartialKey) ?? 0;
-    const csvPartialCount = csvPartialKeyCounts.get(scopedPartialKey) ?? 0;
+    const pdfPartialCount = candidateIndex.pdfPartialKeyCounts.get(scopedPartialKey) ?? 0;
+    const csvPartialCount = candidateIndex.csvPartialKeyCounts.get(scopedPartialKey) ?? 0;
     const availablePartialMatches = partialMatches.get(rowPartialKey);
     const partialMatchDescriptions = availablePartialMatches?.map(describeMatch);
-    const partialMatch = chooseUnambiguousThemeMatch(availablePartialMatches);
-    const canApplyPartialMatch = pdfPartialCount === 1 && (!hasCsvData || csvPartialCount === 1);
+    const partialMatch = chooseUnambiguousThemeMatch(availablePartialMatches, rowCandidateRestriction);
+    const canApplyPartialMatch = pdfPartialCount === 1 && (!candidateIndex.hasCsvData || csvPartialCount === 1);
 
     if (partialMatch && themedCsvTarget && canApplyPartialMatch && canVisualOverrideExistingTheme) {
       decisions.push({
@@ -450,7 +540,7 @@ export function mergeVisionThemesIntoPdfData(
       });
     }
 
-    const existingTheme = canonicalizeThemeWithCandidates(row.theme, normalizedCandidates);
+    const existingTheme = canonicalizeThemeForRestriction(row.theme, rowCandidateRestriction);
     if (existingTheme) {
       if (!themedCsvTarget) {
         decisions.push({
@@ -492,7 +582,7 @@ export function mergeVisionThemesIntoPdfData(
       });
       return row;
     }
-    if (hasCsvData && csvPartialCount !== 1) {
+    if (candidateIndex.hasCsvData && csvPartialCount !== 1) {
       decisions.push({
         ...decisionBase,
         action: 'rejected',
@@ -525,7 +615,7 @@ export function mergeVisionThemesIntoPdfData(
       acceptedMatches,
       rejectedMatches,
       normalizedCandidates,
-      csvRowCount: csvRows.length,
+      csvRowCount: candidateIndex.csvRows.length,
       decisions,
     });
   }

@@ -9,6 +9,7 @@ import { compareSchedules, normalizeSchedule, normalizeThemeName } from '@/lib/n
 import { applyPdfDataThemesToSchedule, collectThemeCandidates, collectThemeVisionTargetRows, mergeVisionThemesIntoPdfData } from '@/lib/pdfThemeVision';
 import { invokePdfThemeVision } from '@/lib/supabaseClient';
 import { SideBySideViewer } from '@/components/SideBySideViewer';
+import { shouldApplyDefaultLocationFilter } from '@/lib/urlLocationFilter';
 
 describe('CSV parser', () => {
   it('uses day-specific cover columns even when cover fields move', () => {
@@ -105,6 +106,24 @@ Slot,Class,Instructor,Cover,Location,Theme,Class,Instructor,Cover,Location,Theme
     const monday = schedule!.days.find(day => day.day === 'Monday');
     expect(monday?.classes).toHaveLength(1);
     expect(monday?.classes[0]?.className).toBe('Studio PowerCycle');
+  });
+
+  it('keeps hosted grid rows as hosted classes instead of dropping or remapping them to Barre 57', () => {
+    const csv = `
+,11 May 2026,,,,,12 May 2026,,,,,
+,Friday,,,,,Saturday,,,,,
+Slot,Class,Instructor,Cover,Location,Theme,Class,Instructor,Cover,Location,Theme
+7:00 PM,Hosted,Cauveri,,Bandra,,PowerCycle,Anmol,,Kemps,
+`;
+
+    const schedule = parseCSVToSchedule(csv);
+    expect(schedule).not.toBeNull();
+
+    const friday = schedule!.days.find(day => day.day === 'Friday');
+    expect(friday?.classes).toHaveLength(1);
+    expect(friday?.classes[0]?.className).toBe('Studio Hosted Class');
+    expect(friday?.classes[0]?.trainer).toBe('Cauveri Vikrant');
+    expect(friday?.classes[0]?.location).toBe('Supreme HQ, Bandra');
   });
 });
 
@@ -438,6 +457,103 @@ describe('CSV/PDF alignment', () => {
     expect(comparison.pdfClasses[0]?.differences).toEqual({ time: true, trainer: true });
   });
 
+  it('prefers same-location class matches over cross-location exact-time collisions in schedule comparison', () => {
+    const pdfClasses = normalizeSchedule([
+      {
+        day: 'Friday',
+        classes: [
+          {
+            id: 'pdf-kemps-powercycle',
+            time: '7:00 PM',
+            className: 'PowerCycle',
+            trainer: 'Anmol',
+            location: 'Kwality House, Kemps Corner',
+          },
+        ],
+      },
+    ]);
+    const csvClasses = normalizeSchedule([
+      {
+        day: 'Friday',
+        classes: [
+          {
+            id: 'csv-bandra-exact-collision',
+            time: '19:00',
+            className: 'Studio PowerCycle',
+            trainer: 'Anmol Sharma',
+            location: 'Supreme HQ, Bandra',
+          },
+          {
+            id: 'csv-kemps-near-time',
+            time: '19:15',
+            className: 'Studio PowerCycle',
+            trainer: 'Anmol Sharma',
+            location: 'Kemps',
+          },
+        ],
+      },
+    ]);
+
+    const comparison = compareSchedules(pdfClasses, csvClasses);
+
+    expect(comparison.pdfClasses[0]?.matchedWith?.id).toBe('csv-kemps-near-time');
+    expect(comparison.pdfClasses[0]?.status).toBe('mismatch');
+    expect(comparison.pdfClasses[0]?.differences).toEqual({ time: true });
+  });
+
+  it('pairs hosted CSV rows with same-slot PDF classes as class mismatches rather than PDF-only rows', () => {
+    const pdfClasses = normalizeSchedule([
+      {
+        day: 'Friday',
+        classes: [
+          {
+            id: 'pdf-cardio-barre-express',
+            time: '7:00 PM',
+            className: 'CARDIO BARRE (EXPRESS)',
+            trainer: 'Cauveri',
+            location: 'Bandra',
+          },
+        ],
+      },
+    ]);
+    const csvClasses = normalizeSchedule([
+      {
+        day: 'Friday',
+        classes: [
+          {
+            id: 'csv-hosted',
+            time: '19:00',
+            className: 'Hosted',
+            trainer: 'Cauveri Vikrant',
+            location: 'Supreme HQ, Bandra',
+          },
+        ],
+      },
+    ]);
+
+    const comparison = compareSchedules(pdfClasses, csvClasses);
+
+    expect(comparison.pdfClasses[0]?.status).toBe('mismatch');
+    expect(comparison.pdfClasses[0]?.matchedWith?.id).toBe('csv-hosted');
+    expect(comparison.pdfClasses[0]?.differences).toEqual({ className: true });
+    expect(comparison.summary.missingInCsv).toBe(0);
+    expect(comparison.summary.extraInCsv).toBe(0);
+  });
+
+  it('does not reapply the default location after a user chooses all locations', () => {
+    expect(shouldApplyDefaultLocationFilter({
+      defaultLocationFilter: 'Kwality House, Kemps Corner',
+      sharedLocationFilter: 'all',
+      userSelectedLocationFilter: false,
+    })).toBe(true);
+
+    expect(shouldApplyDefaultLocationFilter({
+      defaultLocationFilter: 'Kwality House, Kemps Corner',
+      sharedLocationFilter: 'all',
+      userSelectedLocationFilter: true,
+    })).toBe(false);
+  });
+
   it('shows the matched raw PDF row when raw PDF values are aliases of normalized comparison fields', () => {
     const csvData: Record<string, ClassData[]> = {
       Friday: [
@@ -501,6 +617,82 @@ describe('CSV/PDF alignment', () => {
 
     expect(screen.getByDisplayValue('powerCycle (EXPRESS)')).toBeInTheDocument();
     expect(screen.getByDisplayValue('Anmol')).toBeInTheDocument();
+  });
+
+  it('reattaches raw PDF rows by location when duplicate PDF keys exist across studios', () => {
+    const sharedUniqueKey = 'Friday-19:15-Studio PowerCycle Express-Anmol Sharma';
+    const csvData: Record<string, ClassData[]> = {
+      Friday: [
+        {
+          day: 'Friday',
+          timeRaw: '7:15 PM',
+          timeDate: null,
+          time: '19:15',
+          location: 'Kemps',
+          className: 'Studio PowerCycle Express',
+          trainer1: 'Anmol Sharma',
+          cover: '',
+          notes: '',
+          uniqueKey: 'csv-kemps-powercycle-express',
+        },
+      ],
+    };
+    const pdfData: PdfClassData[] = [
+      {
+        day: 'Friday',
+        time: '7:15 PM',
+        className: 'powerCycle (EXPRESS)',
+        trainer: 'Anmol',
+        location: 'Supreme HQ, Bandra',
+        theme: 'Bandra raw row',
+        uniqueKey: sharedUniqueKey,
+      },
+      {
+        day: 'Friday',
+        time: '7:15 PM',
+        className: 'powerCycle (EXPRESS)',
+        trainer: 'Anmol',
+        location: 'Kwality House',
+        theme: 'Kemps raw row',
+        uniqueKey: sharedUniqueKey,
+      },
+    ];
+    const comparison = compareSchedules(
+      normalizeSchedule([
+        {
+          day: 'Friday',
+          classes: [
+            {
+              id: 'pdf-compared-kemps',
+              time: '7:15 PM',
+              className: 'powerCycle (EXPRESS)',
+              trainer: 'Anmol',
+              location: 'Kwality House',
+            },
+          ],
+        },
+      ]),
+      normalizeSchedule([
+        {
+          day: 'Friday',
+          classes: [
+            {
+              id: 'csv-kemps-powercycle-express',
+              time: '19:15',
+              className: 'Studio PowerCycle Express',
+              trainer: 'Anmol Sharma',
+              location: 'Kemps',
+            },
+          ],
+        },
+      ])
+    );
+
+    render(React.createElement(SideBySideViewer, { csvData, pdfData, comparison }));
+    fireEvent.click(screen.getByRole('button', { name: /show all/i }));
+
+    expect(screen.getByDisplayValue('Kemps raw row')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('Bandra raw row')).not.toBeInTheDocument();
   });
 });
 
@@ -636,6 +828,67 @@ describe('PDF visual theme enrichment', () => {
     const targetRows = collectThemeVisionTargetRows(pdfData, csvData);
 
     expect(targetRows).toEqual([]);
+  });
+
+  it('attaches row-specific CSV theme candidates to vision target rows and request payloads', async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ matches: [] }), {
+      headers: { 'Content-Type': 'application/json' },
+    }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    try {
+      const pdfData = [
+        buildPdfRow({
+          location: 'Kwality House, Kemps Corner',
+          theme: 'Rave Ride',
+          uniqueKey: 'pdf-kemps-target',
+        }),
+      ];
+      const csvData: Record<string, ClassData[]> = {
+        Tuesday: [
+          buildCsvRow({
+            location: 'Kwality House, Kemps Corner',
+            theme: 'Decade Hits',
+            uniqueKey: 'csv-kemps-target',
+          }),
+          buildCsvRow({
+            location: 'Supreme HQ, Bandra',
+            theme: 'Rave Ride',
+            uniqueKey: 'csv-bandra-other-location',
+          }),
+        ],
+      };
+
+      const targetRows = collectThemeVisionTargetRows(pdfData, csvData);
+      const rowCandidates = (targetRows[0] as PdfClassData & { themeCandidates?: string[] }).themeCandidates;
+
+      expect(rowCandidates).toEqual(['Decade Hits']);
+
+      await invokePdfThemeVision(
+        targetRows,
+        [
+          {
+            pageIndex: 0,
+            width: 100,
+            height: 100,
+            imageDataUrl: 'data:image/jpeg;base64,abc',
+          },
+        ],
+        collectThemeCandidates(csvData)
+      );
+
+      const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit;
+      const body = JSON.parse(String(requestInit.body));
+
+      expect(body.rows[0]).toMatchObject({
+        uniqueKey: 'pdf-kemps-target',
+        themeCandidates: ['Decade Hits'],
+      });
+      expect(body.rows[0]).not.toHaveProperty('theme');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it('fills blank PDF themes from high-confidence visual matches', () => {
@@ -801,6 +1054,78 @@ describe('PDF visual theme enrichment', () => {
         },
       ],
       { themeCandidates: ['Rave Ride'], csvData }
+    );
+
+    expect(enriched[0]?.theme).toBeUndefined();
+  });
+
+  it('rejects visual themes that are only valid for another location candidate row', () => {
+    const pdfData = [
+      buildPdfRow({
+        location: 'Kwality House, Kemps Corner',
+        uniqueKey: 'pdf-kemps-row',
+      }),
+    ];
+    const csvData: Record<string, ClassData[]> = {
+      Tuesday: [
+        buildCsvRow({
+          location: 'Kwality House, Kemps Corner',
+          theme: 'Decade Hits',
+          uniqueKey: 'csv-kemps-themed-row',
+        }),
+        buildCsvRow({
+          location: 'Supreme HQ, Bandra',
+          theme: 'Rave Ride',
+          uniqueKey: 'csv-bandra-themed-row',
+        }),
+      ],
+    };
+
+    const enriched = mergeVisionThemesIntoPdfData(
+      pdfData,
+      [
+        {
+          day: 'Tuesday',
+          time: '07:30',
+          className: 'Studio PowerCycle',
+          trainer: 'Bret Saldanha',
+          theme: 'Rave Ride',
+          confidence: 0.99,
+        },
+      ],
+      { themeCandidates: collectThemeCandidates(csvData), csvData }
+    );
+
+    expect(enriched[0]?.theme).toBeUndefined();
+  });
+
+  it('clears parser themes that only match another location candidate row', () => {
+    const pdfData = [
+      buildPdfRow({
+        location: 'Kwality House, Kemps Corner',
+        theme: 'Rave Ride',
+        uniqueKey: 'pdf-kemps-parser-theme',
+      }),
+    ];
+    const csvData: Record<string, ClassData[]> = {
+      Tuesday: [
+        buildCsvRow({
+          location: 'Kwality House, Kemps Corner',
+          theme: 'Decade Hits',
+          uniqueKey: 'csv-kemps-themed-row',
+        }),
+        buildCsvRow({
+          location: 'Supreme HQ, Bandra',
+          theme: 'Rave Ride',
+          uniqueKey: 'csv-bandra-themed-row',
+        }),
+      ],
+    };
+
+    const enriched = mergeVisionThemesIntoPdfData(
+      pdfData,
+      [],
+      { themeCandidates: collectThemeCandidates(csvData), csvData }
     );
 
     expect(enriched[0]?.theme).toBeUndefined();
@@ -1438,6 +1763,30 @@ describe('PDF parser regressions', () => {
     expect(classes[0]?.theme).toBe('Boogie Ride ft MJ');
   });
 
+  it('extracts explicit themes from continuation lines that provide the trainer', () => {
+    const classes = __pdfParserTestUtils.parseDayClasses([
+      '6:00 PM powerCycle',
+      'Vivaran ( BOOGIE RIDE FT MJ )',
+    ], 0);
+
+    expect(classes).toHaveLength(1);
+    expect(classes[0]?.className).toBe('Studio PowerCycle');
+    expect(classes[0]?.trainer).toBe('Vivaran Dhasmana');
+    expect(classes[0]?.theme).toBe('Boogie Ride ft MJ');
+  });
+
+  it('does not extract standalone theme continuations when they do not identify the row', () => {
+    const classes = __pdfParserTestUtils.parseDayClasses([
+      '6:00 PM powerCycle',
+      '( BOOGIE RIDE FT MJ )',
+    ], 0);
+
+    expect(classes).toHaveLength(1);
+    expect(classes[0]?.className).toBe('Studio PowerCycle');
+    expect(classes[0]?.trainer).toBe('TBD');
+    expect(classes[0]?.theme).toBeUndefined();
+  });
+
   it('does not extract themes from the next line after the trainer', () => {
     const classes = __pdfParserTestUtils.parseDayClasses([
       '5:00 PM PowerCycle - Anmol',
@@ -1595,6 +1944,86 @@ describe('PDF parser regressions', () => {
 
     expect(classes[0]?.theme).toBeUndefined();
     expect(classes[1]?.theme).toBeUndefined();
+  });
+
+  it('does not recover legend themes from class text color without a row marker', () => {
+    const width = 220;
+    const height = 160;
+    const data = new Uint8ClampedArray(width * height * 4).fill(255);
+    const paintPdfRect = (rect: { x: number; y: number; width: number; height: number }, color: [number, number, number]) => {
+      for (let pdfY = rect.y; pdfY < rect.y + rect.height; pdfY += 1) {
+        for (let pdfX = rect.x; pdfX < rect.x + rect.width; pdfX += 1) {
+          const imageY = height - pdfY - 1;
+          const index = (imageY * width + pdfX) * 4;
+          data[index] = color[0];
+          data[index + 1] = color[1];
+          data[index + 2] = color[2];
+          data[index + 3] = 255;
+        }
+      }
+    };
+
+    const row = {
+      day: 'Friday',
+      pageIndex: 0,
+      rowIndex: 0,
+      sourceTime: '7:00 PM',
+      sourceClassName: 'CARDIO BARRE (EXPRESS)',
+      sourceTrainer: 'Cauveri Vikrant',
+      timeRect: { pageIndex: 0, x: 40, y: 90, width: 35, height: 12 },
+      classRect: { pageIndex: 0, x: 85, y: 90, width: 80, height: 12 },
+      trainerRect: null,
+    };
+
+    paintPdfRect(row.classRect, [112, 186, 149]);
+
+    const theme = __pdfParserTestUtils.findThemeByRowHighlight(
+      { width, height, imageData: { width, height, data } },
+      row,
+      [{ theme: 'Rave Ride', color: { r: 112, g: 186, b: 149 } }]
+    );
+
+    expect(theme).toBeNull();
+  });
+
+  it('recovers legend themes from an explicit row marker strip', () => {
+    const width = 220;
+    const height = 160;
+    const data = new Uint8ClampedArray(width * height * 4).fill(255);
+    const paintPdfRect = (rect: { x: number; y: number; width: number; height: number }, color: [number, number, number]) => {
+      for (let pdfY = rect.y; pdfY < rect.y + rect.height; pdfY += 1) {
+        for (let pdfX = rect.x; pdfX < rect.x + rect.width; pdfX += 1) {
+          const imageY = height - pdfY - 1;
+          const index = (imageY * width + pdfX) * 4;
+          data[index] = color[0];
+          data[index + 1] = color[1];
+          data[index + 2] = color[2];
+          data[index + 3] = 255;
+        }
+      }
+    };
+
+    const row = {
+      day: 'Friday',
+      pageIndex: 0,
+      rowIndex: 0,
+      sourceTime: '7:00 PM',
+      sourceClassName: 'CARDIO BARRE (EXPRESS)',
+      sourceTrainer: 'Cauveri Vikrant',
+      timeRect: { pageIndex: 0, x: 40, y: 90, width: 35, height: 12 },
+      classRect: { pageIndex: 0, x: 85, y: 90, width: 80, height: 12 },
+      trainerRect: null,
+    };
+
+    paintPdfRect({ x: 17, y: 86, width: 18, height: 20 }, [112, 186, 149]);
+
+    const theme = __pdfParserTestUtils.findThemeByRowHighlight(
+      { width, height, imageData: { width, height, data } },
+      row,
+      [{ theme: 'Rave Ride', color: { r: 112, g: 186, b: 149 } }]
+    );
+
+    expect(theme).toBe('Rave Ride');
   });
 
   it('does not treat schedule day headers as theme legend labels', () => {

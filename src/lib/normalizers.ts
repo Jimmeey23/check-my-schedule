@@ -32,6 +32,7 @@ const RECOGNIZED_CLASS_ALIASES = [
   'tabata',
   'icy isometric',
   'hosted class',
+  'hosted',
 ];
 
 function simplifyClassText(value: string): string {
@@ -376,6 +377,7 @@ function compareScheduleAssessments(candidate: MatchAssessment, current: MatchAs
 
   const candidateRank = [
     candidate.classSimilarity >= 0.9 ? 2 : candidate.classSimilarity >= 0.6 ? 1 : 0,
+    candidate.locationSimilarity >= 0.999 ? 2 : candidate.locationSimilarity >= 0.75 ? 1 : 0,
     candidate.timeDiffMinutes === 0 ? 2 : candidate.timeDiffMinutes <= 15 ? 1 : 0,
     candidate.trainerSimilarity >= 0.999 ? 2 : candidate.trainerSimilarity >= 0.82 ? 1 : 0,
     candidate.score,
@@ -384,6 +386,7 @@ function compareScheduleAssessments(candidate: MatchAssessment, current: MatchAs
 
   const currentRank = [
     current.classSimilarity >= 0.9 ? 2 : current.classSimilarity >= 0.6 ? 1 : 0,
+    current.locationSimilarity >= 0.999 ? 2 : current.locationSimilarity >= 0.75 ? 1 : 0,
     current.timeDiffMinutes === 0 ? 2 : current.timeDiffMinutes <= 15 ? 1 : 0,
     current.trainerSimilarity >= 0.999 ? 2 : current.trainerSimilarity >= 0.82 ? 1 : 0,
     current.score,

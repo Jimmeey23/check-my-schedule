@@ -369,10 +369,6 @@ export function parseGridCSV(csvString: string): WeekSchedule | null {
           continue;
         }
 
-        if (rawClassName.toLowerCase().includes('hosted')) {
-          continue;
-        }
-
         const className = normalizeClassName(rawClassName || 'Unknown');
         if (!isRecognizedClassName(rawClassName, className)) {
           continue;

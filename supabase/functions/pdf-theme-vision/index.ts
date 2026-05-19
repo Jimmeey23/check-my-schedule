@@ -23,6 +23,7 @@ type PdfThemeVisionRow = {
   location?: string;
   theme?: string;
   uniqueKey?: string;
+  themeCandidates?: string[];
 };
 
 type PdfThemePageImage = {
@@ -44,6 +45,8 @@ type ThemeMatchRejection = {
   reason: string;
 };
 
+const DAY_NAME_PATTERN = /\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i;
+
 function createRequestId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -56,6 +59,7 @@ function summarizeRow(row: PdfThemeVisionRow) {
     trainer: row.trainer || '',
     theme: row.theme || '',
     uniqueKey: row.uniqueKey || '',
+    themeCandidates: row.themeCandidates || [],
   };
 }
 
@@ -146,40 +150,83 @@ function incrementCount(counts: Map<string, number>, key: string) {
   counts.set(key, (counts.get(key) ?? 0) + 1);
 }
 
+function sanitizeThemeCandidateValues(themeCandidates: unknown): string[] {
+  if (!Array.isArray(themeCandidates)) return [];
+
+  const candidatesByTheme = new Map<string, string>();
+
+  for (const candidate of themeCandidates) {
+    if (typeof candidate !== 'string') continue;
+
+    const label = candidate.trim();
+    const normalized = normalizeThemeName(label);
+    if (!label || !normalized || candidatesByTheme.has(normalized)) continue;
+
+    candidatesByTheme.set(normalized, label);
+  }
+
+  return [...candidatesByTheme.values()].slice(0, 80);
+}
+
+function canonicalizeThemeWithCandidateValues(theme: string | undefined, themeCandidates: string[]): string | null {
+  const rawTheme = theme?.trim() || '';
+  if (!rawTheme) return null;
+  if (DAY_NAME_PATTERN.test(rawTheme)) return null;
+
+  const normalizedTheme = normalizeThemeName(rawTheme);
+  if (!normalizedTheme) return null;
+  if (themeCandidates.length === 0) return rawTheme;
+
+  const candidateByNormalizedTheme = new Map(
+    themeCandidates.map(candidate => [normalizeThemeName(candidate), candidate])
+  );
+
+  return candidateByNormalizedTheme.get(normalizedTheme) || null;
+}
+
 function filterThemeMatches(
   matches: ThemeMatch[],
   rows: PdfThemeVisionRow[],
   themeCandidates: string[]
 ): { matches: ThemeMatch[]; rejected: ThemeMatchRejection[] } {
-  const candidateByNormalizedTheme = new Map(
-    themeCandidates.map(candidate => [normalizeThemeName(candidate), candidate])
-  );
-  const rowFullKeys = new Set(rows.map(fullRowKey));
+  const rowsByFullKey = new Map<string, PdfThemeVisionRow[]>();
+  const rowsByPartialKey = new Map<string, PdfThemeVisionRow[]>();
   const rowPartialKeyCounts = new Map<string, number>();
-  rows.forEach(row => incrementCount(rowPartialKeyCounts, partialRowKey(row)));
+  rows.forEach(row => {
+    const fullKey = fullRowKey(row);
+    const partialKey = partialRowKey(row);
 
-  const accepted: ThemeMatch[] = [];
+    rowsByFullKey.set(fullKey, [...(rowsByFullKey.get(fullKey) || []), row]);
+    rowsByPartialKey.set(partialKey, [...(rowsByPartialKey.get(partialKey) || []), row]);
+    incrementCount(rowPartialKeyCounts, partialKey);
+  });
+
+  const accepted: Array<{ match: ThemeMatch; assignmentKey: string }> = [];
+  const assignmentThemeClaims = new Map<string, Set<string>>();
   const rejected: ThemeMatchRejection[] = [];
 
   for (const match of matches) {
-    let theme = match.theme.trim();
-
-    if (candidateByNormalizedTheme.size > 0) {
-      const canonicalTheme = candidateByNormalizedTheme.get(normalizeThemeName(theme));
-      if (!canonicalTheme) {
-        rejected.push({
-          match,
-          reason: 'theme did not exactly match one of the CSV theme candidates',
-        });
-        continue;
-      }
-      theme = canonicalTheme;
-    }
-
     const exactKey = fullRowKey(match);
     const partialKey = partialRowKey(match);
+    const exactRows = rowsByFullKey.get(exactKey) || [];
+    const partialRows = rowsByPartialKey.get(partialKey) || [];
     const partialCount = rowPartialKeyCounts.get(partialKey) ?? 0;
-    if (!rowFullKeys.has(exactKey) && partialCount !== 1) {
+    let assignmentRows: PdfThemeVisionRow[] = [];
+    let assignmentKey = '';
+
+    if (exactRows.length === 1) {
+      assignmentRows = exactRows;
+      assignmentKey = `exact:${exactKey}`;
+    } else if (exactRows.length > 1) {
+      rejected.push({
+        match,
+        reason: `row matched ${exactRows.length} request rows exactly; location or duplicate row was ambiguous`,
+      });
+      continue;
+    } else if (partialCount === 1 && partialRows.length === 1) {
+      assignmentRows = partialRows;
+      assignmentKey = `partial:${partialKey}`;
+    } else {
       rejected.push({
         match,
         reason: `row did not match exactly and partial day/time/class key matched ${partialCount} PDF rows`,
@@ -187,15 +234,36 @@ function filterThemeMatches(
       continue;
     }
 
-    accepted.push({ ...match, theme });
+    const claimedTheme = normalizeThemeName(match.theme);
+    if (claimedTheme) {
+      const claims = assignmentThemeClaims.get(assignmentKey) || new Set<string>();
+      claims.add(claimedTheme);
+      assignmentThemeClaims.set(assignmentKey, claims);
+    }
+
+    const rowSpecificCandidates = sanitizeThemeCandidateValues(
+      assignmentRows.flatMap(row => row.themeCandidates || [])
+    );
+    const applicableCandidates = rowSpecificCandidates.length > 0
+      ? rowSpecificCandidates
+      : themeCandidates;
+    const theme = canonicalizeThemeWithCandidateValues(match.theme, applicableCandidates);
+
+    if (!theme) {
+      rejected.push({
+        match,
+        reason: rowSpecificCandidates.length > 0
+          ? 'theme did not exactly match one of the row-specific CSV theme candidates'
+          : 'theme did not exactly match one of the CSV theme candidates',
+      });
+      continue;
+    }
+
+    accepted.push({ match: { ...match, theme }, assignmentKey });
   }
 
   const matchesByAssignment = new Map<string, ThemeMatch[]>();
-  accepted.forEach(match => {
-    const exactKey = fullRowKey(match);
-    const assignmentKey = rowFullKeys.has(exactKey)
-      ? `exact:${exactKey}`
-      : `partial:${partialRowKey(match)}`;
+  accepted.forEach(({ match, assignmentKey }) => {
     matchesByAssignment.set(assignmentKey, [
       ...(matchesByAssignment.get(assignmentKey) || []),
       match,
@@ -203,7 +271,17 @@ function filterThemeMatches(
   });
 
   const unambiguousAccepted: ThemeMatch[] = [];
-  for (const assignmentMatches of matchesByAssignment.values()) {
+  for (const [assignmentKey, assignmentMatches] of matchesByAssignment.entries()) {
+    if ((assignmentThemeClaims.get(assignmentKey)?.size || 0) > 1) {
+      rejected.push(
+        ...assignmentMatches.map(match => ({
+          match,
+          reason: 'multiple different themes matched the same PDF row assignment',
+        }))
+      );
+      continue;
+    }
+
     const bestByTheme = new Map<string, ThemeMatch>();
 
     for (const match of assignmentMatches) {
@@ -278,6 +356,7 @@ function sanitizeRows(rows: unknown): PdfThemeVisionRow[] {
       trainer: typeof source.trainer === 'string' ? source.trainer : '',
       location: typeof source.location === 'string' ? source.location : '',
       uniqueKey: typeof source.uniqueKey === 'string' ? source.uniqueKey : '',
+      themeCandidates: sanitizeThemeCandidateValues(source.themeCandidates),
     };
   }).filter(row => row.day && row.time && row.className);
 }
@@ -295,21 +374,7 @@ function sanitizePageImages(pageImages: unknown): PdfThemePageImage[] {
 }
 
 function sanitizeThemeCandidates(themeCandidates: unknown): string[] {
-  if (!Array.isArray(themeCandidates)) return [];
-
-  const candidatesByTheme = new Map<string, string>();
-
-  for (const candidate of themeCandidates) {
-    if (typeof candidate !== 'string') continue;
-
-    const label = candidate.trim();
-    const normalized = normalizeThemeName(label);
-    if (!label || !normalized || candidatesByTheme.has(normalized)) continue;
-
-    candidatesByTheme.set(normalized, label);
-  }
-
-  return [...candidatesByTheme.values()].slice(0, 80);
+  return sanitizeThemeCandidateValues(themeCandidates);
 }
 
 function extractOutputText(responsePayload: unknown): string {
@@ -404,8 +469,10 @@ serve(async (req: Request) => {
 
     const apiKey = getOpenAiApiKey();
     const model = Deno.env.get('OPENAI_VISION_MODEL')?.trim() || DEFAULT_MODEL;
-    const themeSchema = themeCandidates.length > 0
-      ? { type: 'string', enum: themeCandidates }
+    const rowThemeCandidates = sanitizeThemeCandidates(rows.flatMap(row => row.themeCandidates || []));
+    const schemaThemeCandidates = themeCandidates.length > 0 ? themeCandidates : rowThemeCandidates;
+    const themeSchema = schemaThemeCandidates.length > 0
+      ? { type: 'string', enum: schemaThemeCandidates }
       : { type: 'string' };
 
     console.info('[pdf-theme-vision] invoking OpenAI vision model', {
@@ -418,6 +485,9 @@ serve(async (req: Request) => {
     const candidateText = themeCandidates.length
       ? `Known CSV theme names, if visible in the PDF or legend: ${themeCandidates.join(' | ')}`
       : 'No CSV theme candidates were provided. Extract only theme names visibly present in the PDF image.';
+    const rowCandidateText = rows.some(row => row.themeCandidates && row.themeCandidates.length > 0)
+      ? 'Each parsed row may include themeCandidates. For a returned row, theme must be exactly one of that row-specific themeCandidates list.'
+      : 'No row-specific CSV theme candidates were provided.';
 
     const inputContent = [
       {
@@ -434,6 +504,7 @@ serve(async (req: Request) => {
           themeCandidates.length
             ? 'The theme field must be exactly one of the known CSV theme names listed below.'
             : 'Use the exact visible theme text as printed.',
+          rowCandidateText,
           'Use 24-hour HH:mm times in the JSON if the supplied row uses that format.',
           candidateText,
           `Parsed PDF rows to enrich:\n${JSON.stringify(rows)}`,

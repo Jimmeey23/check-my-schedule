@@ -19,7 +19,7 @@ import { parsePDF, parsePDFToClassData, scheduleToPdfClassData } from '@/lib/pdf
 import { applyPdfDataThemesToSchedule, collectThemeCandidates, collectThemeVisionTargetRows, mergeVisionThemesIntoPdfData, renderPdfPagesForThemeVision } from '@/lib/pdfThemeVision';
 import { buildCleanedPdfSheetRows, CLEANED_PDF_SHEET_NAME } from '@/lib/cleanedPdfSheet';
 import { normalizeSchedule, compareSchedules, normalizeLocation } from '@/lib/normalizers';
-import { LOCATION_QUERY_PARAM, normalizeLocationFilterValue, updateLocationSearchParams } from '@/lib/urlLocationFilter';
+import { LOCATION_QUERY_PARAM, normalizeLocationFilterValue, shouldApplyDefaultLocationFilter, updateLocationSearchParams } from '@/lib/urlLocationFilter';
 import type { UploadedFile, WeekSchedule, ScheduleComparisonResult, NormalizedClass, ClassData, PdfClassData } from '@/types/schedule';
 import { invokeMomenceFunction, invokePdfThemeVision, syncCleanedPdfSheet } from '@/lib/supabaseClient';
 import { type MomenceClassData } from '@/types/momence';
@@ -49,6 +49,7 @@ const Index = () => {
   const pdfPreviewUrlsRef = useRef<Record<string, string>>({});
   const pdfSchedulesRef = useRef<Map<string, WeekSchedule>>(new Map());
   const csvClassDataRef = useRef<{[day: string]: ClassData[]} | null>(null);
+  const userSelectedLocationFilterRef = useRef(false);
 
   const completedPdfUploads = useMemo(
     () => uploadedFiles.filter(file => file.type === 'pdf' && file.status === 'completed'),
@@ -166,6 +167,7 @@ const Index = () => {
   }, [pdfSchedules, sharedLocationFilter]);
 
   const handleSharedLocationChange = useCallback((location: string) => {
+    userSelectedLocationFilterRef.current = true;
     setSearchParams(current => updateLocationSearchParams(current, location));
   }, [setSearchParams]);
 
@@ -197,8 +199,11 @@ const Index = () => {
   }, [csvClassData]);
 
   useEffect(() => {
-    if (defaultLocationFilter === 'all') return;
-    if (sharedLocationFilter !== 'all') return;
+    if (!shouldApplyDefaultLocationFilter({
+      defaultLocationFilter,
+      sharedLocationFilter,
+      userSelectedLocationFilter: userSelectedLocationFilterRef.current,
+    })) return;
 
     setSearchParams(current => updateLocationSearchParams(current, defaultLocationFilter));
   }, [defaultLocationFilter, setSearchParams, sharedLocationFilter]);
@@ -462,6 +467,7 @@ const Index = () => {
     setPdfClassDataByLocation(new Map());
     setPdfPreviewUrls({});
     setActiveTab('upload');
+    userSelectedLocationFilterRef.current = false;
     setSearchParams(current => updateLocationSearchParams(current, 'all'));
     void syncPdfSchedulesToSheet([]);
   }, [setSearchParams, syncPdfSchedulesToSheet]);

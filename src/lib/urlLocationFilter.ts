@@ -23,3 +23,17 @@ export function updateLocationSearchParams(current: URLSearchParams, location: s
 
   return next;
 }
+
+export function shouldApplyDefaultLocationFilter({
+  defaultLocationFilter,
+  sharedLocationFilter,
+  userSelectedLocationFilter,
+}: {
+  defaultLocationFilter: string;
+  sharedLocationFilter: string;
+  userSelectedLocationFilter: boolean;
+}): boolean {
+  return defaultLocationFilter !== 'all'
+    && sharedLocationFilter === 'all'
+    && !userSelectedLocationFilter;
+}

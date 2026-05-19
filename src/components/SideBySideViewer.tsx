@@ -75,6 +75,24 @@ function buildPdfLookup(pdfRows: PdfClassData[]): Map<string, PdfClassData[]> {
   return lookup;
 }
 
+function getComparedLocation(comparedClass: ComparedClass): string | undefined {
+  return comparedClass.normalizedLocation || normalizeLocation(comparedClass.location);
+}
+
+function hasSamePdfLocation(row: PdfClassData, comparedClass: ComparedClass): boolean {
+  const rowLocation = normalizeLocation(row.location);
+  const comparedLocation = getComparedLocation(comparedClass);
+
+  return Boolean(rowLocation && comparedLocation && rowLocation === comparedLocation);
+}
+
+function hasCompatiblePdfLocation(row: PdfClassData, comparedClass: ComparedClass): boolean {
+  const rowLocation = normalizeLocation(row.location);
+  const comparedLocation = getComparedLocation(comparedClass);
+
+  return !rowLocation || !comparedLocation || rowLocation === comparedLocation;
+}
+
 function findRawPdfClass(
   comparedClass: ComparedClass | null,
   pdfLookup: Map<string, PdfClassData[]>,
@@ -82,8 +100,17 @@ function findRawPdfClass(
 ): PdfClassData | null {
   if (!comparedClass) return null;
 
-  const exactMatch = pdfLookup.get(getComparedPdfUniqueKey(comparedClass))?.[0];
-  if (exactMatch) return exactMatch;
+  const exactMatches = pdfLookup.get(getComparedPdfUniqueKey(comparedClass)) || [];
+  const exactLocationMatch = exactMatches.find(row => hasSamePdfLocation(row, comparedClass));
+  if (exactLocationMatch) return exactLocationMatch;
+
+  if (exactMatches.length === 1 && hasCompatiblePdfLocation(exactMatches[0], comparedClass)) {
+    return exactMatches[0];
+  }
+
+  if (exactMatches.length > 0 && !getComparedLocation(comparedClass)) {
+    return exactMatches[0];
+  }
 
   return (
     pdfRows.find(row => {
@@ -91,12 +118,8 @@ function findRawPdfClass(
       const sameTime = normalizeTime(row.time) === comparedClass.normalizedTime;
       const sameClass = normalizeClassName(row.className) === comparedClass.normalizedClassName;
       const sameTrainer = normalizeTrainer(row.trainer) === comparedClass.normalizedTrainer;
-      const sameLocation =
-        !row.location ||
-        !comparedClass.normalizedLocation ||
-        normalizeLocation(row.location) === comparedClass.normalizedLocation;
 
-      return sameDay && sameTime && sameClass && sameTrainer && sameLocation;
+      return sameDay && sameTime && sameClass && sameTrainer && hasCompatiblePdfLocation(row, comparedClass);
     }) || null
   );
 }
@@ -414,9 +437,29 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
     });
   };
 
+  const getEditablePdfRowIndex = (pdfClass: PdfClassData | null): number => {
+    if (!pdfClass) return -1;
+
+    const matchingIndexes = editablePdfData
+      .map((row, index) => ({ row, index }))
+      .filter(({ row }) => row.uniqueKey === pdfClass.uniqueKey);
+
+    const targetLocation = normalizeLocation(pdfClass.location);
+    const locationMatch = matchingIndexes.find(({ row }) => {
+      const rowLocation = normalizeLocation(row.location);
+      return Boolean(rowLocation && targetLocation && rowLocation === targetLocation);
+    });
+
+    if (locationMatch) return locationMatch.index;
+    if (matchingIndexes.length === 1) return matchingIndexes[0].index;
+
+    return -1;
+  };
+
   const getEditablePdfRow = (pdfClass: PdfClassData | null): PdfClassData | null => {
     if (!pdfClass) return null;
-    return editablePdfData.find(row => row.uniqueKey === pdfClass.uniqueKey) || pdfClass;
+    const index = getEditablePdfRowIndex(pdfClass);
+    return index >= 0 ? editablePdfData[index] : pdfClass;
   };
 
   const generateCSVExport = (): string => {
@@ -541,7 +584,7 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
     allAlignedData.forEach(row => {
       if (!row.pdfClass || !row.csvClass || row.matchStatus !== 'mismatch') return;
 
-      const pdfIndex = correctedData.findIndex(item => item.uniqueKey === row.pdfClass?.uniqueKey);
+      const pdfIndex = getEditablePdfRowIndex(row.pdfClass);
       if (pdfIndex === -1) return;
 
       if (row.issueTypes.includes('time-mismatch')) {
@@ -573,9 +616,9 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
     });
   };
 
-  const handleCellEdit = (uniqueKey: string, field: 'time' | 'className' | 'trainer' | 'location' | 'theme', value: string) => {
+  const handleCellEdit = (pdfClass: PdfClassData, field: 'time' | 'className' | 'trainer' | 'location' | 'theme', value: string) => {
     const updated = [...editablePdfData];
-    const index = updated.findIndex(item => item.uniqueKey === uniqueKey);
+    const index = getEditablePdfRowIndex(pdfClass);
     if (index === -1) return;
 
     updated[index] = {
@@ -870,7 +913,7 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
                           <input
                             type="text"
                             value={editablePdfRow.time}
-                            onChange={e => handleCellEdit(editablePdfRow.uniqueKey, 'time', e.target.value)}
+                            onChange={e => handleCellEdit(editablePdfRow, 'time', e.target.value)}
                             className="min-w-[96px] border border-transparent bg-transparent px-1 py-0.5 text-xs font-mono text-slate-700 focus:outline-none focus:ring-0 focus:border-slate-200 rounded-md"
                           />
                         ) : <span className="text-slate-300">—</span>}
@@ -880,7 +923,7 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
                           <input
                             type="text"
                             value={editablePdfRow.className}
-                            onChange={e => handleCellEdit(editablePdfRow.uniqueKey, 'className', e.target.value)}
+                            onChange={e => handleCellEdit(editablePdfRow, 'className', e.target.value)}
                             className="min-w-[240px] border border-transparent bg-transparent px-1 py-0.5 text-xs text-slate-800 focus:outline-none focus:ring-0 focus:border-slate-200 rounded-md"
                           />
                         ) : <span className="text-slate-300">—</span>}
@@ -890,7 +933,7 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
                           <input
                             type="text"
                             value={editablePdfRow.trainer}
-                            onChange={e => handleCellEdit(editablePdfRow.uniqueKey, 'trainer', e.target.value)}
+                            onChange={e => handleCellEdit(editablePdfRow, 'trainer', e.target.value)}
                             className="min-w-[220px] border border-transparent bg-transparent px-1 py-0.5 text-xs text-slate-700 focus:outline-none focus:ring-0 focus:border-slate-200 rounded-md"
                           />
                         ) : <span className="text-slate-300">—</span>}
@@ -900,7 +943,7 @@ export function SideBySideViewer({ csvData, pdfData, comparison, locationFilter 
                           <input
                             type="text"
                             value={editablePdfRow.theme || ''}
-                            onChange={e => handleCellEdit(editablePdfRow.uniqueKey, 'theme', e.target.value)}
+                            onChange={e => handleCellEdit(editablePdfRow, 'theme', e.target.value)}
                             className="min-w-[160px] border border-transparent bg-transparent px-1 py-0.5 text-xs text-slate-700 focus:outline-none focus:ring-0 focus:border-slate-200 rounded-md"
                           />
                         ) : <span className="text-slate-300">—</span>}

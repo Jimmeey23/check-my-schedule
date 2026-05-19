@@ -47,7 +47,7 @@ async function getAccessToken(): Promise<string> {
   return cachedToken;
 }
 
-async function fetchSessions(startDate: string, endDate: string): Promise<any> {
+async function fetchSessions(startDate: string, endDate: string): Promise<unknown> {
   const token = await getAccessToken();
 
   const params = new URLSearchParams({

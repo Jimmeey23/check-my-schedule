@@ -1,6 +1,6 @@
 import type { NormalizedClass, ComparedClass, ScheduleComparisonResult, DaySchedule, ClassLevel } from '@/types/schedule';
 import { classNameMappings, teacherNameMappings, locationMappings, classLevels, knownClasses, knownTeachers } from './normalizationMaps';
-import { assessMatch } from './matchingUtils';
+import { assessMatch, type MatchAssessment } from './matchingUtils';
 
 const RECOGNIZED_CLASS_ALIASES = [
   'barre 57',
@@ -39,7 +39,7 @@ function simplifyClassText(value: string): string {
     .toLowerCase()
     .replace(/^studio\s+/i, '')
     .replace(/express\b/gi, ' ')
-    .replace(/[()\[\]]/g, ' ')
+    .replace(/[()[\]]/g, ' ')
     .replace(/[^a-z0-9+/\s']/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -371,6 +371,34 @@ export function normalizeDay(day: string): string {
   return dayMap[day.trim().toLowerCase()] || day.charAt(0).toUpperCase() + day.slice(1).toLowerCase();
 }
 
+function compareScheduleAssessments(candidate: MatchAssessment, current: MatchAssessment | null): number {
+  if (!current) return 1;
+
+  const candidateRank = [
+    candidate.classSimilarity >= 0.9 ? 2 : candidate.classSimilarity >= 0.6 ? 1 : 0,
+    candidate.timeDiffMinutes === 0 ? 2 : candidate.timeDiffMinutes <= 15 ? 1 : 0,
+    candidate.trainerSimilarity >= 0.999 ? 2 : candidate.trainerSimilarity >= 0.82 ? 1 : 0,
+    candidate.score,
+    -candidate.timeDiffMinutes,
+  ];
+
+  const currentRank = [
+    current.classSimilarity >= 0.9 ? 2 : current.classSimilarity >= 0.6 ? 1 : 0,
+    current.timeDiffMinutes === 0 ? 2 : current.timeDiffMinutes <= 15 ? 1 : 0,
+    current.trainerSimilarity >= 0.999 ? 2 : current.trainerSimilarity >= 0.82 ? 1 : 0,
+    current.score,
+    -current.timeDiffMinutes,
+  ];
+
+  for (let i = 0; i < candidateRank.length; i++) {
+    if (candidateRank[i] !== currentRank[i]) {
+      return candidateRank[i] > currentRank[i] ? 1 : -1;
+    }
+  }
+
+  return 0;
+}
+
 /**
  * Convert schedule days to normalized classes
  */
@@ -450,9 +478,7 @@ export function compareSchedules(
       );
 
       const score = assessment.score;
-      const isBetter =
-        score > bestMatchScore ||
-        (score === bestMatchScore && bestAssessment && assessment.timeDiffMinutes < bestAssessment.timeDiffMinutes);
+      const isBetter = compareScheduleAssessments(assessment, bestAssessment) > 0;
 
       if (isBetter) {
         bestMatchScore = score;

@@ -97,7 +97,7 @@ export async function fetchMomenceSessions(
 ): Promise<MomenceSession[]> {
   const token = await getAccessToken();
   
-  let allSessions: MomenceSession[] = [];
+  const allSessions: MomenceSession[] = [];
   let page = 0;
   const pageSize = 200;
   let hasMore = true;

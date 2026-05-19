@@ -31,6 +31,10 @@ const TEACHER_ENTRIES: TeacherEntry[] = knownTeachers.map(teacher => ({
 
 const THEME_MARKER_REGEX = /[⚡✨⭐🔥💥🎵🎶]\uFE0F?\s*/u;
 const KNOWN_THEME_PATTERNS: Array<{ pattern: RegExp; value: string }> = [
+  { pattern: /\bRAVE\s+RIDE\b/i, value: 'Rave Ride' },
+  { pattern: /\bBOOGIE\s+RIDE\s+FT\.?\s+MJ\b/i, value: 'Boogie Ride ft MJ' },
+  { pattern: /\bLENGTH\s*(?:&|AND)\s*STRENGTH\b/i, value: 'Length & Strength' },
+  { pattern: /\bISO\s+CHALLENGE\b/i, value: 'ISO Challenge' },
   { pattern: /\bWEAR\s+BLUE\b/i, value: 'Wear Blue' },
   { pattern: /\bGLUTE\s+CAMP\b/i, value: 'Glute Camp' },
   { pattern: /\bTAYLOR\s+SWIFT\s+VS\s+SOMBER\b/i, value: 'Taylor Swift vs Somber' },
@@ -49,7 +53,7 @@ function normalizeExtractedText(text: string): string {
   return text
     .replace(/\s+/g, ' ')
     .replace(/\s+([),.;:!?%\]])/g, '$1')
-    .replace(/([([\-])\s+/g, '$1')
+    .replace(/(\(|\[|-)\s+/g, '$1')
     .trim();
 }
 
@@ -290,7 +294,7 @@ function shouldInsertSpace(previousText: string, nextText: string, gap: number, 
 
   if (gap <= Math.max(0.8, unitWidth * 0.35)) return false;
   if (/^[),.;:!?%\]]$/.test(nextChar)) return false;
-  if (/^[(/\[]$/.test(prevChar)) return false;
+  if (/^(?:\(|\/|\[)$/.test(prevChar)) return false;
 
   return true;
 }
@@ -913,7 +917,13 @@ function matchClassName(text: string): string | null {
   const compact = compactText(cleaned);
 
   for (const entry of CLASS_MAPPING_ENTRIES) {
-    if (upper.includes(entry.key.toUpperCase()) || compact.includes(entry.compactKey)) {
+    const keyUpper = entry.key.toUpperCase();
+    const isShortAlias = entry.compactKey.length <= 2;
+    const matches = isShortAlias
+      ? upper === keyUpper || compact === entry.compactKey
+      : upper.includes(keyUpper) || compact.includes(entry.compactKey);
+
+    if (matches) {
       return entry.value;
     }
   }

@@ -1,6 +1,41 @@
 // Normalization functions without type imports
 
 
+type LooseScheduleClass = {
+  day?: string;
+  className?: string;
+  trainer?: string;
+  trainer1?: string;
+  location?: string;
+  time?: string;
+  normalizedClassName?: string;
+  normalizedTrainer?: string;
+  normalizedLocation?: string;
+  normalizedTime?: string;
+  [key: string]: unknown;
+};
+
+type LooseScheduleDay = {
+  day?: string;
+  classes?: LooseScheduleClass[];
+  [key: string]: unknown;
+};
+
+type LegacyComparisonResult = {
+  summary: {
+    matches: number;
+    mismatches: number;
+    missing: number;
+    extra: number;
+  };
+  pdfClasses: LooseScheduleClass[];
+  csvClasses: LooseScheduleClass[];
+  matches: Array<{ pdf: LooseScheduleClass; csv: LooseScheduleClass }>;
+  mismatches: Array<{ pdf: LooseScheduleClass; csv: LooseScheduleClass; reason: string }>;
+  missing: LooseScheduleClass[];
+  extra: LooseScheduleClass[];
+};
+
 // Days order for sorting
 export const daysOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -232,7 +267,7 @@ export function normalizeTimeString(timeStr: string): string {
   
   // Replace special characters with colon: (., ', ;, -, ~, etc)
   // Keep only digits, colons, and AM/PM
-  time = time.replace(/[.,';~\-\|\\\/\s]+/g, ':');
+  time = time.replace(/[.,';~|\\/\s-]+/g, ':');
   
   // Handle multiple colons (user might have typed multiple separators)
   time = time.replace(/:+/g, ':');
@@ -252,7 +287,7 @@ export function normalizeTimeString(timeStr: string): string {
   if (!numericPart) return '';
   
   // Split by colon to get hours and minutes
-  let parts = numericPart.split(':').filter(p => p.length > 0);
+  const parts = numericPart.split(':').filter(p => p.length > 0);
   
   if (parts.length === 0) return '';
   
@@ -296,7 +331,7 @@ export function normalizeTimeString(timeStr: string): string {
 export function parseTimeToDate(timeStr: string): Date | null {
   if (!timeStr) return null;
   const today = new Date();
-  let time = normalizeTimeString(timeStr);
+  const time = normalizeTimeString(timeStr);
   const ampmMatch = time.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
   if (ampmMatch) {
     let hour = parseInt(ampmMatch[1], 10);
@@ -326,30 +361,33 @@ export function formatTime(date: Date | null): string {
   return `${hours}:${minStr} ${ampm}`;
 }
 
-export function normalizeSchedule(days: any[]): any[] {
-  const classes: any[] = [];
+export function normalizeSchedule(days: LooseScheduleDay[]): LooseScheduleClass[] {
+  const classes: LooseScheduleClass[] = [];
   days.forEach(day => {
-    day.classes?.forEach((cls: any) => {
+    day.classes?.forEach(cls => {
       classes.push({
         ...cls,
         day: day.day,
-        normalizedClassName: normalizeClassName(cls.className),
+        normalizedClassName: normalizeClassName(cls.className || ''),
         normalizedTrainer: normalizeTrainerName(cls.trainer || cls.trainer1),
-        normalizedLocation: normalizeLocationName(cls.location),
-        normalizedTime: normalizeTimeString(cls.time),
+        normalizedLocation: normalizeLocationName(cls.location || ''),
+        normalizedTime: normalizeTimeString(cls.time || ''),
       });
     });
   });
   return classes;
 }
 
-export function compareSchedules(pdfClasses: any[], csvClasses: any[]): any {
-  const matches: any[] = [];
-  const mismatches: any[] = [];
-  const missing: any[] = [];
-  const extra: any[] = [];
+export function compareSchedules(
+  pdfClasses: LooseScheduleClass[],
+  csvClasses: LooseScheduleClass[]
+): LegacyComparisonResult {
+  const matches: Array<{ pdf: LooseScheduleClass; csv: LooseScheduleClass }> = [];
+  const mismatches: Array<{ pdf: LooseScheduleClass; csv: LooseScheduleClass; reason: string }> = [];
+  const missing: LooseScheduleClass[] = [];
+  const extra: LooseScheduleClass[] = [];
 
-  const pdfMap = new Map();
+  const pdfMap = new Map<string, LooseScheduleClass>();
   pdfClasses.forEach(cls => {
     const key = `${cls.day}|${cls.normalizedTime}|${cls.normalizedClassName}`;
     pdfMap.set(key, cls);

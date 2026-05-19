@@ -5,7 +5,7 @@ import type { PdfThemePageImage, PdfThemeVisionMatch } from '@/lib/pdfThemeVisio
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://oleiodivubhtcagrlfug.supabase.co';
 const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9sZWlvZGl2dWJodGNhZ3JsZnVnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzgwMzQwNTYsImV4cCI6MjA1MzYxMDA1Nn0.3yzD0c4xXo59AkSmLcWwXqNSzjhbXCNCl4-M_2cCqGw';
-const pdfThemeVisionUrl = import.meta.env.VITE_PDF_THEME_VISION_URL || 'https://smzyvwxrkiluhlkybzhp.supabase.co/functions/v1/pdf-theme-vision';
+const pdfThemeVisionUrl = import.meta.env.VITE_PDF_THEME_VISION_URL || `${supabaseUrl}/functions/v1/pdf-theme-vision`;
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -19,7 +19,6 @@ async function invokeEdgeFunctionWithAnonAuth<TResponse>(
     headers: {
       'Content-Type': 'application/json',
       apikey: supabaseKey,
-      Authorization: `Bearer ${supabaseKey}`,
     },
     body: method === 'GET' ? undefined : JSON.stringify(body ?? {}),
   });
@@ -83,12 +82,15 @@ export async function invokePdfThemeVision(
   pageImages: PdfThemePageImage[],
   themeCandidates: string[] = []
 ): Promise<PdfThemeVisionMatch[]> {
-  const requestBody = { rows, pageImages, themeCandidates };
+  const requestRows = rows.map(({ theme: _theme, ...row }) => row);
+  const requestBody = { rows: requestRows, pageImages, themeCandidates };
 
   const response = await fetch(pdfThemeVisionUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      apikey: supabaseKey,
+      Authorization: `Bearer ${supabaseKey}`,
     },
     body: JSON.stringify(requestBody),
   });
@@ -99,5 +101,12 @@ export async function invokePdfThemeVision(
   }
 
   const data = await response.json();
+  if (Array.isArray(data?.rejected) && data.rejected.length > 0) {
+    console.warn('[PDF Theme Vision] function rejected matches', {
+      requestId: data?.requestId,
+      rejected: data.rejected,
+    });
+  }
+
   return Array.isArray(data?.matches) ? data.matches : [];
 }

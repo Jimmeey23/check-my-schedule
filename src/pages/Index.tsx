@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { readCSVFile } from '@/lib/csvParser';
 import { parsePDF, parsePDFToClassData, scheduleToPdfClassData } from '@/lib/pdfParser';
-import { applyPdfDataThemesToSchedule, collectThemeCandidates, mergeVisionThemesIntoPdfData, renderPdfPagesForThemeVision } from '@/lib/pdfThemeVision';
+import { applyPdfDataThemesToSchedule, collectThemeCandidates, collectThemeVisionTargetRows, mergeVisionThemesIntoPdfData, renderPdfPagesForThemeVision } from '@/lib/pdfThemeVision';
 import { buildCleanedPdfSheetRows, CLEANED_PDF_SHEET_NAME } from '@/lib/cleanedPdfSheet';
 import { normalizeSchedule, compareSchedules, normalizeLocation } from '@/lib/normalizers';
 import { LOCATION_QUERY_PARAM, normalizeLocationFilterValue, updateLocationSearchParams } from '@/lib/urlLocationFilter';
@@ -282,14 +282,54 @@ const Index = () => {
 
           if (pageImages.length > 0) {
             const themeCandidates = collectThemeCandidates(csvClassDataRef.current);
-            const themeMatches = await invokePdfThemeVision(
-              pdfData,
-              pageImages,
-              themeCandidates
-            );
+            const themeVisionTargetRows = collectThemeVisionTargetRows(pdfData, csvClassDataRef.current);
+            const themeVisionRequestRows = themeVisionTargetRows.map(row => ({
+              ...row,
+              theme: undefined,
+            }));
+            console.info('[PDF Theme Vision] rows and candidates', {
+              fileName: file.name,
+              themeCandidates,
+              parsedPdfRows: pdfData.length,
+              targetRowsSentToVision: themeVisionRequestRows.length,
+              strippedParserThemesFromRequest: themeVisionTargetRows.filter(row => row.theme?.trim()).length,
+            });
+            console.table(themeVisionRequestRows.map(row => ({
+              day: row.day,
+              time: row.time,
+              className: row.className,
+              trainer: row.trainer,
+              location: row.location,
+              themeSentToVision: row.theme || '—',
+              uniqueKey: row.uniqueKey,
+            })));
+
+            const themeMatches = themeVisionRequestRows.length > 0
+              ? await invokePdfThemeVision(
+                  themeVisionRequestRows,
+                  pageImages,
+                  themeCandidates
+                )
+              : [];
+            console.info('[PDF Theme Vision] raw matches returned', {
+              fileName: file.name,
+              matchCount: themeMatches.length,
+              skippedVisionCall: themeVisionRequestRows.length === 0,
+            });
+            console.table(themeMatches.map(match => ({
+              day: match.day,
+              time: match.time,
+              className: match.className,
+              trainer: match.trainer || '—',
+              theme: match.theme,
+              confidence: match.confidence,
+            })));
+
             const enrichedPdfData = mergeVisionThemesIntoPdfData(pdfData, themeMatches, {
               themeCandidates,
               csvData: csvClassDataRef.current,
+              debug: true,
+              debugLabel: file.name,
             });
             const changedThemeRows = enrichedPdfData.filter((row, index) => row.theme !== pdfData[index]?.theme);
             const appliedThemes = changedThemeRows.filter(row => row.theme?.trim()).length;
@@ -302,8 +342,23 @@ const Index = () => {
               parserThemesCleared: clearedParserThemes,
               rowsChanged: changedThemeRows.length,
             });
+            if (changedThemeRows.length > 0) {
+              console.table(changedThemeRows.map((row, changedIndex) => {
+                const originalIndex = enrichedPdfData.findIndex(item => item.uniqueKey === row.uniqueKey);
+                const before = originalIndex >= 0 ? pdfData[originalIndex] : undefined;
+                return {
+                  changedIndex,
+                  day: row.day,
+                  time: row.time,
+                  className: row.className,
+                  trainer: row.trainer,
+                  beforeTheme: before?.theme || '—',
+                  afterTheme: row.theme || '—',
+                };
+              }));
+            }
 
-            if (themeMatches.length > 0 && appliedThemes === 0) {
+            if (themeMatches.length > 0 && appliedThemes === 0 && clearedParserThemes === 0) {
               console.warn('[PDF Theme Vision] matches were returned but rejected by row/theme matching safeguards.', {
                 fileName: file.name,
                 matches: themeMatches,
@@ -361,7 +416,7 @@ const Index = () => {
         error: `Failed to process ${type.toUpperCase()} file. ${error instanceof Error ? error.message : ''}`
       } : f));
     }
-  }, []);
+  }, [syncPdfSchedulesToSheet]);
 
   const handleRemoveFile = useCallback((id: string) => {
     const file = uploadedFiles.find(f => f.id === id);
@@ -396,7 +451,7 @@ const Index = () => {
       }
     }
     setUploadedFiles(prev => prev.filter(f => f.id !== id));
-  }, [uploadedFiles]);
+  }, [syncPdfSchedulesToSheet, uploadedFiles]);
 
   const handleClearAll = useCallback(() => {
     Object.values(pdfPreviewUrlsRef.current).forEach(url => revokePreviewUrl(url));

@@ -13,7 +13,7 @@ import {
   getComparisonRowTime,
   type ComparisonAlignedRow,
 } from '@/lib/comparisonAlignment';
-import { normalizeLocation } from '@/lib/normalizers';
+import { normalizeClassName, normalizeLocation, normalizeTime, normalizeTrainer } from '@/lib/normalizers';
 import {
   CheckCircle2,
   AlertTriangle,
@@ -88,10 +88,15 @@ function findRawPdfClass(
   return (
     pdfRows.find(row => {
       const sameDay = row.day === comparedClass.day;
-      const sameTime = row.time === comparedClass.normalizedTime;
-      const sameClass = row.className === comparedClass.normalizedClassName;
-      const sameTrainer = row.trainer === comparedClass.normalizedTrainer;
-      return sameDay && sameTime && sameClass && sameTrainer;
+      const sameTime = normalizeTime(row.time) === comparedClass.normalizedTime;
+      const sameClass = normalizeClassName(row.className) === comparedClass.normalizedClassName;
+      const sameTrainer = normalizeTrainer(row.trainer) === comparedClass.normalizedTrainer;
+      const sameLocation =
+        !row.location ||
+        !comparedClass.normalizedLocation ||
+        normalizeLocation(row.location) === comparedClass.normalizedLocation;
+
+      return sameDay && sameTime && sameClass && sameTrainer && sameLocation;
     }) || null
   );
 }

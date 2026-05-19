@@ -298,6 +298,39 @@
     animation: sortIconPulse 1.8s ease-in-out infinite;
   }
 
+  .app-title-wordmark {
+    background: linear-gradient(90deg, #0f172a 0%, #334155 30%, #0f172a 58%, #64748b 100%);
+    background-size: 220% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: titleSheen 5.2s ease-in-out infinite;
+  }
+
+  .app-title-icon {
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 10px 24px -18px rgba(15, 23, 42, 0.65);
+  }
+
+  .app-title-icon::after {
+    content: '';
+    position: absolute;
+    inset: -45%;
+    background: linear-gradient(115deg, transparent 38%, rgba(255, 255, 255, 0.38) 50%, transparent 62%);
+    transform: translateX(-70%) rotate(8deg);
+    animation: titleIconSweep 4.8s ease-in-out infinite;
+  }
+
+  .app-title-icon svg {
+    position: relative;
+    z-index: 1;
+  }
+
+  .app-title-spark {
+    animation: titleSpark 2.4s ease-in-out infinite;
+  }
+
   @keyframes fadeIn {
     from { opacity: 0; }
     to { opacity: 1; }
@@ -337,6 +370,39 @@
     }
   }
 
+  @keyframes titleSheen {
+    0%,
+    100% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+  }
+
+  @keyframes titleIconSweep {
+    0%,
+    38% {
+      transform: translateX(-70%) rotate(8deg);
+    }
+    62%,
+    100% {
+      transform: translateX(70%) rotate(8deg);
+    }
+  }
+
+  @keyframes titleSpark {
+    0%,
+    100% {
+      opacity: 0.55;
+      transform: translateY(0) scale(1);
+    }
+    50% {
+      opacity: 1;
+      transform: translateY(-1px) scale(1.12);
+    }
+  }
+
   @keyframes gradientShift {
     0% {
       background-position: 0% 50%;
@@ -369,6 +435,9 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
+    .app-title-wordmark,
+    .app-title-icon::after,
+    .app-title-spark,
     .sort-icon-active {
       animation: none;
     }

@@ -545,16 +545,7 @@ const Index = () => {
     <div className="min-h-screen app-shell">
       <Header />
 
-      <main className="container mx-auto max-w-7xl px-4 py-6 sm:px-5">
-        <section className="mb-5">
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-950 md:text-3xl">
-            Check My Schedule
-          </h1>
-          <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
-            Compare uploaded schedules and review row-level differences by location.
-          </p>
-        </section>
-
+      <main className="container mx-auto max-w-7xl px-4 py-5 sm:px-5">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <TabsList className="h-auto flex-wrap rounded-lg border border-slate-200 bg-white p-1 shadow-sm">

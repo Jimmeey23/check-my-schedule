@@ -545,29 +545,29 @@ const Index = () => {
     <div className="min-h-screen app-shell">
       <Header />
 
-      <main className="container mx-auto max-w-7xl px-4 py-5 sm:px-5">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <TabsList className="h-auto flex-wrap rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
-              <TabsTrigger value="upload" className="gap-2 rounded-md text-xs data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-none">
+      <main className="container mx-auto max-w-7xl overflow-x-hidden px-4 py-5 sm:px-5">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="min-w-0 space-y-4 overflow-x-hidden">
+          <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <TabsList className="app-tabs-list grid h-auto w-[358px] max-w-full grid-cols-2 items-center justify-start gap-1 overflow-visible rounded-lg border border-slate-200 bg-white p-1 shadow-sm sm:inline-flex sm:w-auto sm:max-w-full sm:flex-wrap">
+              <TabsTrigger value="upload" className="min-w-0 gap-2 rounded-md text-xs data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-none">
                 <Upload className="w-4 h-4" /> Upload
               </TabsTrigger>
-              <TabsTrigger value="csv" className="gap-2 rounded-md text-xs data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-none" disabled={!hasCsv}>
+              <TabsTrigger value="csv" className="min-w-0 gap-2 rounded-md text-xs data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-none" disabled={!hasCsv}>
                 <FileSpreadsheet className="w-4 h-4" /> CSV
                 {hasCsv && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
               </TabsTrigger>
-              <TabsTrigger value="pdf" className="gap-2 rounded-md text-xs data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-none" disabled={!hasPdf}>
+              <TabsTrigger value="pdf" className="min-w-0 gap-2 rounded-md text-xs data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-none" disabled={!hasPdf}>
                 <FileText className="w-4 h-4" /> PDF
                 {hasPdf && <Badge variant="secondary" className="text-xs h-5 px-1.5 bg-red-100 text-red-700 border-red-200">{pdfSchedules.size}</Badge>}
               </TabsTrigger>
-              <TabsTrigger value="pdf-files" className="gap-2 rounded-md text-xs data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-none" disabled={!hasPdf}>
+              <TabsTrigger value="pdf-files" className="min-w-0 gap-2 rounded-md text-xs data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-none" disabled={!hasPdf}>
                 <Eye className="w-4 h-4" /> Editor
                 {hasPdf && <Badge variant="secondary" className="text-xs h-5 px-1.5 bg-red-100 text-red-700 border-red-200">{pdfSchedules.size}</Badge>}
               </TabsTrigger>
-              <TabsTrigger value="side-by-side" className="gap-2 rounded-md text-xs data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-none">
+              <TabsTrigger value="side-by-side" className="min-w-0 gap-2 rounded-md text-xs data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-none">
                 <GitCompare className="w-4 h-4" /> Compare
               </TabsTrigger>
-              <TabsTrigger value="momence" className="gap-2 rounded-md text-xs data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-none">
+              <TabsTrigger value="momence" className="min-w-0 gap-2 rounded-md text-xs data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-none">
                 <Globe className="w-4 h-4" /> Momence
               </TabsTrigger>
             </TabsList>
@@ -629,7 +629,7 @@ const Index = () => {
           )}
 
           <TabsContent value="upload" className="animate-fade-in">
-            <div className="surface-card p-5">
+            <div className="upload-tab-shell">
               <FileUploadZone onUpload={handleUpload} uploadedFiles={uploadedFiles} onRemoveFile={handleRemoveFile} />
             </div>
           </TabsContent>

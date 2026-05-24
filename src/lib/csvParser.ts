@@ -33,6 +33,8 @@ const CLASS_KEYWORDS = [
   'hiit', 'foundation', 'sweat', 'hosted', 'pre/post', 'prenatal', 'tabata', 'isometric', 'amped',
 ];
 
+const HOSTED_CLASS_NAME_REGEX = /\bhosted\b/i;
+
 const HEADER_ALIASES = {
   day: ['day', 'weekday', 'day of week', 'dow'],
   date: ['date', 'class date', 'session date'],
@@ -65,6 +67,18 @@ export function shouldExcludeClass(rawTrainer: string, rawCover: string): boolea
 
   if (shouldExclude) {
     console.log(`[CSV Parser] Excluding class with trainer: "${trainerToCheck}"`);
+  }
+
+  return shouldExclude;
+}
+
+export function shouldExcludeClassName(rawClassName: string): boolean {
+  const className = rawClassName?.trim() || '';
+  if (!className) return false;
+
+  const shouldExclude = HOSTED_CLASS_NAME_REGEX.test(className);
+  if (shouldExclude) {
+    console.log(`[CSV Parser] Excluding hosted class: "${className}"`);
   }
 
   return shouldExclude;
@@ -389,6 +403,7 @@ function normalizeRow(row: CSVRow, columns: ColumnDetection): NormalizedRowData 
   const theme = columns.theme ? row[columns.theme] || '' : '';
 
   if (!day || !time || !classNameRaw) return null;
+  if (shouldExcludeClassName(classNameRaw)) return null;
 
   const coverRaw = resolveCoverForDay(row, columns, day);
   if (shouldExcludeClass(trainerRaw, coverRaw)) return null;

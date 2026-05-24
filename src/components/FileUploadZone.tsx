@@ -44,6 +44,8 @@ export function FileUploadZone({
 }: FileUploadZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
   const pendingFiles = uploadedFiles.filter(file => file.status === 'uploading' || file.status === 'processing');
+  const completedPdfCount = uploadedFiles.filter(file => file.type === 'pdf' && file.status === 'completed').length;
+  const completedCsvCount = uploadedFiles.filter(file => file.type === 'csv' && file.status === 'completed').length;
 
   const acceptString = acceptedTypes.map(t => t === 'pdf' ? 'application/pdf' : '.csv,text/csv').join(',');
 
@@ -95,11 +97,28 @@ export function FileUploadZone({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="upload-panel space-y-4">
+      <div className="upload-panel-header">
+        <div className="min-w-0">
+          <p className="upload-panel-kicker">Schedule intake</p>
+          <h2 className="upload-panel-title">Upload schedule sources</h2>
+        </div>
+        <div className="upload-source-summary" aria-label="Uploaded source summary">
+          <span className="upload-source-pill upload-source-pill-pdf">
+            <FileText className="h-3.5 w-3.5" />
+            {completedPdfCount} PDF
+          </span>
+          <span className="upload-source-pill upload-source-pill-csv">
+            <FileSpreadsheet className="h-3.5 w-3.5" />
+            {completedCsvCount} CSV
+          </span>
+        </div>
+      </div>
+
       {pendingFiles.length > 0 && (
-        <div className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700">
+        <div className="upload-processing-banner">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          {pendingFiles.length === 1 ? 'Processing 1 file…' : `Processing ${pendingFiles.length} files…`}
+          {pendingFiles.length === 1 ? 'Processing 1 file...' : `Processing ${pendingFiles.length} files...`}
         </div>
       )}
 
@@ -109,11 +128,10 @@ export function FileUploadZone({
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         className={cn(
-          "relative rounded-xl border border-dashed p-8 transition-colors duration-150",
-          "bg-white",
+          "upload-dropzone group",
           isDragging 
-            ? "border-slate-500 bg-slate-50"
-            : "border-slate-300 hover:border-slate-500"
+            ? "upload-dropzone-active"
+            : "upload-dropzone-idle"
         )}
       >
         <input
@@ -124,59 +142,88 @@ export function FileUploadZone({
           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
         />
         
-        <div className="flex flex-col items-center text-center">
-          <div className={cn(
-            "mb-4 flex h-12 w-12 items-center justify-center rounded-lg transition-colors duration-150",
-            isDragging 
-              ? "bg-slate-900 text-white"
-              : "bg-slate-100 text-slate-700"
-          )}>
-            <Upload className="h-5 w-5" />
+        <div className="upload-dropzone-grid">
+          <div className="upload-icon-stage" aria-hidden="true">
+            <span className="upload-icon-ring upload-icon-ring-one" />
+            <span className="upload-icon-ring upload-icon-ring-two" />
+            <div className={cn(
+              "upload-icon-core",
+              isDragging && "upload-icon-core-active"
+            )}>
+              <Upload className="h-6 w-6" />
+            </div>
+            <span className="upload-format-badge upload-format-badge-pdf">
+              <FileText className="h-3.5 w-3.5" />
+            </span>
+            <span className="upload-format-badge upload-format-badge-csv">
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+            </span>
           </div>
-          
-          <h3 className="mb-1 text-base font-semibold text-slate-900">
-            {isDragging ? "Drop your files here" : "Drag & Drop your schedule files"}
-          </h3>
-          <p className="mb-4 max-w-md text-sm leading-6 text-slate-500">
-            Upload PDF schedules or CSV files to compare and verify your class data.
-            We'll extract and normalize all information automatically.
-          </p>
-          
-          <div className="flex gap-3">
-            {acceptedTypes.includes('pdf') && (
-              <Button variant="outline" size="sm" className="pointer-events-none gap-2 text-slate-700">
-                <FileText className="w-4 h-4" />
-                PDF
-              </Button>
-            )}
-            {acceptedTypes.includes('csv') && (
-              <Button variant="outline" size="sm" className="pointer-events-none gap-2 text-slate-700">
-                <FileSpreadsheet className="w-4 h-4" />
-                CSV
-              </Button>
-            )}
+
+          <div className="upload-dropzone-copy flex w-full min-w-0 max-w-xl flex-col items-center text-center lg:items-start lg:text-left">
+            <h3 className="mb-2 text-xl font-semibold text-slate-950 sm:text-2xl">
+              {isDragging ? "Drop files to start processing" : "Drop PDF and CSV files here"}
+            </h3>
+            <p className="mb-5 max-w-xl text-sm leading-6 text-slate-500">
+              Upload source schedules and compare parsed class data across studio locations.
+            </p>
+            
+            <div className="flex w-full flex-col items-center justify-center gap-2.5 sm:w-auto sm:flex-row sm:flex-wrap lg:justify-start">
+              {acceptedTypes.includes('pdf') && (
+                <Button variant="outline" size="sm" className="pointer-events-none h-9 w-full max-w-[220px] justify-center gap-2 rounded-md border-red-200 bg-red-50 text-red-700 shadow-none sm:w-auto">
+                  <FileText className="w-4 h-4" />
+                  PDF schedule
+                </Button>
+              )}
+              {acceptedTypes.includes('csv') && (
+                <Button variant="outline" size="sm" className="pointer-events-none h-9 w-full max-w-[220px] justify-center gap-2 rounded-md border-emerald-200 bg-emerald-50 text-emerald-700 shadow-none sm:w-auto">
+                  <FileSpreadsheet className="w-4 h-4" />
+                  CSV export
+                </Button>
+              )}
+            </div>
           </div>
+
+          <div className="upload-dropzone-note" aria-hidden="true">
+            <div className="upload-note-row">
+              <span className="upload-note-dot upload-note-dot-pdf" />
+              PDF parser
+            </div>
+            <div className="upload-note-row">
+              <span className="upload-note-dot upload-note-dot-csv" />
+              CSV matcher
+            </div>
+            <div className="upload-note-row">
+              <span className="upload-note-dot upload-note-dot-compare" />
+              Side-by-side review
+            </div>
+          </div>
+        </div>
+        <div className="sr-only">
+          <h3>{isDragging ? "Drop files to start processing" : "Drop PDF and CSV files here"}</h3>
+          <p>Upload PDF schedules or CSV files.</p>
         </div>
       </div>
 
       {/* Uploaded Files */}
       {uploadedFiles.length > 0 && (
-        <div className="space-y-2">
+        <div className="upload-files-section space-y-2">
           <h4 className="flex items-center gap-2 text-xs font-semibold text-slate-600">
             <FileSpreadsheet className="w-4 h-4" />
             Uploaded Files ({uploadedFiles.length})
           </h4>
           <div className="grid gap-2">
-            {uploadedFiles.map((file) => (
+            {uploadedFiles.map((file, index) => (
               <div 
                 key={file.id}
                 className={cn(
-                  "flex items-center gap-3 rounded-lg border bg-white p-3 transition-colors",
+                  "upload-file-row flex items-center gap-3 rounded-lg border bg-white p-3",
                   file.status === 'error' ? "border-red-200 bg-red-50" : "border-slate-200 hover:border-slate-300"
                 )}
+                style={{ animationDelay: `${Math.min(index * 45, 270)}ms` }}
               >
                 <div className={cn(
-                  "flex h-9 w-9 items-center justify-center rounded-md",
+                  "upload-file-icon flex h-9 w-9 items-center justify-center rounded-md",
                   file.type === 'pdf' ? "bg-red-100 text-red-600" : "bg-emerald-100 text-emerald-600"
                 )}>
                   {getFileIcon(file.type)}

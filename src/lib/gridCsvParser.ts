@@ -1,6 +1,6 @@
 import type { WeekSchedule, DaySchedule, ScheduleClass, ClassLevel } from '@/types/schedule';
 import { normalizeTime, normalizeTrainer, normalizeLocation, normalizeClassName, isRecognizedClassName } from './normalizers';
-import { shouldExcludeClass } from './csvParser';
+import { shouldExcludeClass, shouldExcludeClassName } from './csvParser';
 
 /**
  * Grid CSV parser for spreadsheet-like schedules where day data is spread across columns.
@@ -364,6 +364,7 @@ export function parseGridCSV(csvString: string): WeekSchedule | null {
         const rawTheme = block.themeCol !== undefined ? (row[block.themeCol] || '').trim() : '';
 
         if (!rawClassName && !rawTrainer1 && !rawCover && !rawTrainer2) continue;
+        if (shouldExcludeClassName(rawClassName)) continue;
 
         if (shouldExcludeClass(rawTrainer1 || rawTrainer2, rawCover)) {
           continue;

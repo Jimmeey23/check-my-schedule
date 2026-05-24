@@ -1,19 +1,30 @@
-import { FileSpreadsheet, Sparkles } from 'lucide-react';
+import { CalendarCheck2, CalendarDays, ClipboardList, Clock3 } from 'lucide-react';
 
 export function Header() {
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/90">
-      <div className="container mx-auto flex h-16 max-w-7xl items-center px-4 sm:px-5">
-        <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
+    <header className="app-header sticky top-0 z-50 w-full border-b border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/90">
+      <div className="app-header-bg-icons" aria-hidden="true">
+        <CalendarDays className="app-header-bg-icon app-header-bg-icon-1" />
+        <Clock3 className="app-header-bg-icon app-header-bg-icon-2" />
+        <ClipboardList className="app-header-bg-icon app-header-bg-icon-3" />
+      </div>
+
+      <div className="container relative z-10 mx-auto flex h-[4.75rem] max-w-7xl items-center px-4 sm:h-20 sm:px-5">
+        <div className="flex min-w-0 items-center gap-3 sm:gap-3.5">
           <div className="app-title-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white sm:h-9 sm:w-9">
-            <FileSpreadsheet className="h-4 w-4" />
+            <CalendarCheck2 className="h-5 w-5" />
           </div>
 
-          <h1 className="flex min-w-0 items-center whitespace-nowrap text-[12px] font-semibold tracking-tight sm:text-lg md:text-xl">
-            <span className="app-title-wordmark">Check My Schedule</span>
-            <span className="mx-1.5 text-slate-400 sm:mx-2"> - </span>
-            <span className="app-title-wordmark">By Jimmeey Gondaa</span>
-            <Sparkles className="app-title-spark ml-2 hidden h-4 w-4 shrink-0 text-slate-500 sm:block" />
+          <h1 className="app-title flex min-w-0 flex-col items-start whitespace-nowrap">
+            <span className="app-title-primary">
+              <span>Check My</span>
+              <span className="app-title-schedule">Schedule</span>
+            </span>
+            <span className="app-title-border" aria-hidden="true" />
+            <span className="app-title-signature" aria-label="by Jimmeey Gondaa">
+              <span className="app-title-by">by</span>
+              <span className="app-title-name">Jimmeey Gondaa</span>
+            </span>
           </h1>
         </div>
       </div>

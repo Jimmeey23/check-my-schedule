@@ -91,6 +91,21 @@ Friday,11:00 AM,Barre 57,Anisha,Kemps
     expect(friday?.classes[0]?.className).toBe('Studio Barre 57');
   });
 
+  it('skips rows where the class column contains the word Hosted', () => {
+    const csv = `
+Day,Start Time,Class Name,Trainer,Location
+Friday,10:00 AM,Hosted Barre 57,Richard D'Costa,Kemps
+Friday,11:00 AM,Barre 57,Anisha,Kemps
+`;
+
+    const schedule = parseCSVToSchedule(csv);
+    expect(schedule).not.toBeNull();
+
+    const friday = schedule!.days.find(day => day.day === 'Friday');
+    expect(friday?.classes).toHaveLength(1);
+    expect(friday?.classes[0]?.className).toBe('Studio Barre 57');
+  });
+
   it('skips grid csv rows whose class cell does not contain a recognized class name', () => {
     const csv = `
 ,9 Feb 2026,,,,,10 Feb 2026,,,,
@@ -108,7 +123,7 @@ Slot,Class,Instructor,Cover,Location,Theme,Class,Instructor,Cover,Location,Theme
     expect(monday?.classes[0]?.className).toBe('Studio PowerCycle');
   });
 
-  it('keeps hosted grid rows as hosted classes instead of dropping or remapping them to Barre 57', () => {
+  it('skips hosted grid rows instead of extracting them as classes', () => {
     const csv = `
 ,11 May 2026,,,,,12 May 2026,,,,,
 ,Friday,,,,,Saturday,,,,,
@@ -120,10 +135,11 @@ Slot,Class,Instructor,Cover,Location,Theme,Class,Instructor,Cover,Location,Theme
     expect(schedule).not.toBeNull();
 
     const friday = schedule!.days.find(day => day.day === 'Friday');
-    expect(friday?.classes).toHaveLength(1);
-    expect(friday?.classes[0]?.className).toBe('Studio Hosted Class');
-    expect(friday?.classes[0]?.trainer).toBe('Cauveri Vikrant');
-    expect(friday?.classes[0]?.location).toBe('Supreme HQ, Bandra');
+    const saturday = schedule!.days.find(day => day.day === 'Saturday');
+
+    expect(friday).toBeUndefined();
+    expect(saturday?.classes).toHaveLength(1);
+    expect(saturday?.classes[0]?.className).toBe('Studio PowerCycle');
   });
 });
 

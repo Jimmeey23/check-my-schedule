@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { AuroraBackground } from '@/components/ui/aurora-background';
 import {
   FileSpreadsheet, FileText, GitCompare, Trash2, Upload,
   CheckCircle2, AlertCircle, Building2, Globe, Eye
@@ -542,7 +543,7 @@ const Index = () => {
   const canCompare = hasPdf && hasCsv;
 
   return (
-    <div className="min-h-screen app-shell">
+    <AuroraBackground className="app-shell">
       <Header />
 
       <main className="container mx-auto max-w-7xl overflow-x-hidden px-4 py-5 sm:px-5">
@@ -717,7 +718,12 @@ const Index = () => {
           </TabsContent>
         </Tabs>
       </main>
-    </div>
+      <footer className="app-footer-note">
+        <span>Internal schedule intelligence workspace</span>
+        <span aria-hidden="true" className="app-footer-note-divider" />
+        <span>Validate PDF, CSV, and Momence data before publishing studio updates.</span>
+      </footer>
+    </AuroraBackground>
   );
 };
 

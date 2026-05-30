@@ -1,4 +1,4 @@
-import { CalendarCheck2, CalendarDays, ClipboardList, Clock3 } from 'lucide-react';
+import { CalendarClock, CalendarDays, ClipboardList, Clock3 } from 'lucide-react';
 
 export function Header() {
   return (
@@ -9,17 +9,14 @@ export function Header() {
         <ClipboardList className="app-header-bg-icon app-header-bg-icon-3" />
       </div>
 
-      <div className="container relative z-10 mx-auto flex h-[4.75rem] max-w-7xl items-center px-4 sm:h-20 sm:px-5">
+      <div className="container relative z-10 mx-auto flex min-h-[5.6rem] max-w-7xl items-center px-4 py-3 sm:min-h-24 sm:px-5">
         <div className="flex min-w-0 items-center gap-3 sm:gap-3.5">
-          <div className="app-title-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white sm:h-9 sm:w-9">
-            <CalendarCheck2 className="h-5 w-5" />
+          <div className="app-title-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white sm:h-10 sm:w-10">
+            <CalendarClock className="h-5 w-5 sm:h-[1.35rem] sm:w-[1.35rem]" />
           </div>
 
           <h1 className="app-title flex min-w-0 flex-col items-start whitespace-nowrap">
-            <span className="app-title-primary">
-              <span>Check My</span>
-              <span className="app-title-schedule">Schedule</span>
-            </span>
+            <span className="app-title-primary">Check My Schedule</span>
             <span className="app-title-border" aria-hidden="true" />
             <span className="app-title-signature" aria-label="by Jimmeey Gondaa">
               <span className="app-title-by">by</span>

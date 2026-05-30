@@ -843,29 +843,18 @@
   }
 
   .app-title-schedule::after {
-    content: '';
-    position: absolute;
-    right: 0.02em;
-    bottom: -0.11em;
-    left: 0.04em;
-    height: 2px;
-    border-radius: 999px;
-    background: linear-gradient(90deg, rgba(15, 23, 42, 0), rgba(30, 58, 138, 0.58), rgba(15, 118, 110, 0.48), rgba(15, 23, 42, 0));
-    opacity: 0.54;
-    transform-origin: left center;
-    animation: scheduleUnderline 8.4s ease-in-out infinite;
+    content: none;
   }
 
   .app-title-border {
     display: block;
     width: 100%;
-    height: 2px;
-    margin-top: 0.1rem;
+    height: 1px;
+    margin-top: 0.05rem;
     border-radius: 999px;
-    background: linear-gradient(90deg, rgba(15, 23, 42, 0.62), rgba(30, 64, 175, 0.72), rgba(127, 29, 29, 0.48), rgba(15, 23, 42, 0));
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.85);
+    background: linear-gradient(90deg, rgba(15, 23, 42, 0.28), rgba(30, 64, 175, 0.42) 48%, rgba(127, 29, 29, 0.28) 72%, rgba(15, 23, 42, 0.04));
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.9);
     transform-origin: left center;
-    animation: titleBorderDraw 6.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
   }
 
   .app-title-signature {
@@ -940,17 +929,7 @@
   }
 
   .app-title-icon::before {
-    content: '';
-    position: absolute;
-    left: calc(100% - 1px);
-    bottom: -0.48rem;
-    width: 1.05rem;
-    height: 2px;
-    border-radius: 999px;
-    background: linear-gradient(90deg, rgba(15, 23, 42, 0.54), rgba(30, 64, 175, 0.52), rgba(127, 29, 29, 0.36));
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.78);
-    transform-origin: left center;
-    animation: titleIconConnector 6.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+    content: none;
   }
 
   .app-title-icon::after {
